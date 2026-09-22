@@ -89,6 +89,17 @@ document.body.addEventListener('htmx:sseMessage', (e) => {
   }
 });
 
+/* disable the button (or the form's submit button) while its request is in flight; CSS draws the spinner */
+document.body.addEventListener('htmx:beforeRequest', (e) => {
+  const el = e.detail.elt; const btns = el.tagName === 'BUTTON' ? [el] : el.tagName === 'FORM' ? [...el.querySelectorAll('button[type=submit]')] : [];
+  btns.forEach((b) => { b.dataset.wasDisabled = b.disabled ? '1' : ''; b.disabled = true; });
+});
+document.body.addEventListener('htmx:afterRequest', (e) => {
+  const el = e.detail.elt; if (!el.isConnected) return;
+  const btns = el.tagName === 'BUTTON' ? [el] : el.tagName === 'FORM' ? [...el.querySelectorAll('button[type=submit]')] : [];
+  btns.forEach((b) => { b.disabled = b.dataset.wasDisabled === '1'; delete b.dataset.wasDisabled; });
+});
+
 /* ⌘/Ctrl+Enter submits the enclosing htmx form */
 document.body.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && e.target.tagName === 'TEXTAREA') { const f = e.target.closest('form'); if (f) htmx.trigger(f, 'submit'); }

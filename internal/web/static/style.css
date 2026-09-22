@@ -44,6 +44,14 @@ input[type=search], select, textarea, input[type=text], input[type=number] { bac
 textarea { width: 100%; font-family: var(--mono); font-size: 12.5px; line-height: 1.4; resize: vertical; }
 .chk { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
 .htmx-request.htmx-indicator, .htmx-request .htmx-indicator { opacity: 1; }
+/* any button that triggered an in-flight request shows a spinner and cannot be clicked again */
+button.htmx-request { position: relative; color: transparent !important; pointer-events: none; }
+button.htmx-request::after { content: ""; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -7px 0 0 -7px; border: 2px solid var(--muted); border-top-color: var(--fg); border-radius: 50%; animation: spin .7s linear infinite; }
+button.primary.htmx-request::after { border-color: rgba(255,255,255,.4); border-top-color: #fff; }
+form.htmx-request button[type=submit] { position: relative; color: transparent !important; pointer-events: none; }
+form.htmx-request button[type=submit]::after { content: ""; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -7px 0 0 -7px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tab.htmx-request { opacity: .6; }
 
 /* list */
 .pr { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; align-items: start; }
@@ -128,7 +136,7 @@ table.difft td.ln { width: 46px; text-align: right; color: var(--muted); user-se
 table.difft td.ln[hx-get] { cursor: pointer; }
 table.difft td.ln[hx-get]:hover { color: var(--accent); background: rgba(79,140,255,.18); }
 table.difft td.mk { width: 18px; text-align: center; color: var(--muted); user-select: none; }
-table.difft td.code { white-space: pre; overflow-x: auto; }
+table.difft td.code { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; } /* wrap long lines; rows grow together so numbers stay aligned */
 tr.add td.code, tr.add td.mk { background: var(--add); }
 tr.del td.code, tr.del td.mk { background: var(--del); }
 tr.add td.mk { color: var(--ok); } tr.del td.mk { color: var(--err); }
