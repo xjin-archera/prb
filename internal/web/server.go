@@ -59,6 +59,7 @@ type Server struct {
 
 	rmMu    sync.Mutex
 	remarks map[string]remarkCache // PR key -> GitHub discussion, cached briefly
+	assetV  string                 // changes on every start, so browsers refetch the embedded assets
 }
 
 type remarkCache struct {
@@ -150,6 +151,7 @@ func New(cfg config.Config, paths config.Paths, st *store.Store, jobs *runner.Ma
 		return nil, err
 	}
 	s.tpl = tpl
+	s.assetV = strconv.FormatInt(time.Now().Unix(), 36)
 	s.chromaLt = diff.CSS("github", ".hl")
 	s.chromaDk = diff.CSS("github-dark", ".hl")
 	return s, nil
@@ -400,7 +402,7 @@ func (s *Server) buildList(ctx context.Context, f filter, force bool) (listData,
 }
 
 func (s *Server) index(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "index", map[string]any{"Filter": parseFilter(r), "ClaudeMissing": !claudeAvailable()})
+	s.render(w, "index", map[string]any{"Filter": parseFilter(r), "ClaudeMissing": !claudeAvailable(), "V": s.assetV})
 }
 
 func claudeAvailable() bool {

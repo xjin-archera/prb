@@ -19,7 +19,7 @@
   <details class="dfile" id="f{{$f.Index}}" open>
     <summary class="dfile-head"><span class="mono path">{{$f.Path}}</span>{{if $f.Status}}<span class="badge {{$f.Status}}">{{$f.Status}}</span>{{end}}<span class="muted small"><span class="adds">+{{$f.Adds}}</span>/<span class="dels">-{{$f.Dels}}</span></span>{{if $f.Comments}}<span class="badge fc">{{$f.Comments}} 💬</span>{{end}}</summary>
     {{if $f.Binary}}<div class="pad muted small">binary file</div>{{else}}
-    <table class="difft">
+    <table class="difft"><colgroup><col class="c-ln"><col class="c-ln"><col class="c-mk"><col></colgroup>
       {{range $h := $f.Hunks}}
       <tr class="hunk"><td colspan="4">{{$h.Header}}</td></tr>
       {{range $l := $h.Lines}}

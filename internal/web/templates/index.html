@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PR Review Board</title>
-<link rel="stylesheet" href="/static/style.css">
-<link rel="stylesheet" href="/static/chroma.css">
+<link rel="stylesheet" href="/static/style.css?v={{.V}}">
+<link rel="stylesheet" href="/static/chroma.css?v={{.V}}">
 <script src="/static/vendor/htmx.min.js"></script>
 <script src="/static/vendor/sse.js"></script>
 </head>
@@ -36,7 +36,7 @@
   <aside id="chat" hidden></aside>
 </main>
 <div id="toast"></div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{.V}}"></script>
 </body>
 </html>{{end}}
 
