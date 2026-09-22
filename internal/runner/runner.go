@@ -604,13 +604,30 @@ func (m *Manager) ensureImage(ctx context.Context) error {
 
 var hexRe = regexp.MustCompile(`^[0-9a-f]+$`)
 
+// CheckToken rejects values that cannot be a Claude Code long-lived token (a truncated paste is the common case).
+func CheckToken(tok string) error {
+	switch {
+	case !strings.HasPrefix(tok, "sk-ant-oat"):
+		return fmt.Errorf("does not look like a Claude Code token (expected it to start with sk-ant-oat, got %.8s…); run `claude setup-token`", tok)
+	case len(tok) < 90:
+		return fmt.Errorf("token is %d characters, a full token is about 108; the paste was probably cut short", len(tok))
+	}
+	return nil
+}
+
 // oauthToken returns the headless Claude Code token for the sandbox: config, then env, then the macOS Keychain
 // item created with `security add-generic-password -s pr-review-board -a oauth -w <token>`.
 func (m *Manager) oauthToken() (string, error) {
 	if m.cfg.ClaudeOAuthToken != "" {
+		if err := CheckToken(m.cfg.ClaudeOAuthToken); err != nil {
+			return "", fmt.Errorf("claude_oauth_token in config: %v", err)
+		}
 		return m.cfg.ClaudeOAuthToken, nil
 	}
 	if v := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"); v != "" {
+		if err := CheckToken(v); err != nil {
+			return "", fmt.Errorf("CLAUDE_CODE_OAUTH_TOKEN in the environment: %v", err)
+		}
 		return v, nil
 	}
 	if runtime.GOOS == "darwin" {
@@ -624,6 +641,9 @@ func (m *Manager) oauthToken() (string, error) {
 		}
 		tok = strings.Join(strings.Fields(tok), "")
 		if err == nil && tok != "" {
+			if cerr := CheckToken(tok); cerr != nil {
+				return "", fmt.Errorf("the Keychain item pr-review-board/oauth is not usable: %v. Run `claude setup-token`, then `prb setup`", cerr)
+			}
 			return tok, nil
 		}
 	}

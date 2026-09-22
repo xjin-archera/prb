@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	_ "embed"
 	"errors"
@@ -141,11 +142,13 @@ func setup() error {
 		fmt.Println()
 		fmt.Println("The sandbox needs a long-lived Claude Code token (your Keychain login is not visible in the container).")
 		fmt.Println("Run `claude setup-token`, then paste the token here (leave empty to skip):")
-		var tok string
 		fmt.Print("token> ")
-		_, _ = fmt.Scanln(&tok)
-		tok = strings.TrimSpace(tok)
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		tok := strings.Join(strings.Fields(line), "") // a pasted token can carry a wrapped line break
 		if tok != "" {
+			if err := runner.CheckToken(tok); err != nil {
+				return fmt.Errorf("token not stored: %w", err)
+			}
 			if runtime.GOOS == "darwin" {
 				_ = exec.Command("security", "delete-generic-password", "-s", "pr-review-board", "-a", "oauth").Run()
 				if err := exec.Command("security", "add-generic-password", "-s", "pr-review-board", "-a", "oauth", "-w", tok).Run(); err != nil {

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/xjin-archera/prb/internal/store"
@@ -85,5 +86,18 @@ func TestReviewedSHA(t *testing.T) {
 	r.PrevSHA = ""
 	if ReviewedSHA(r) != "new" {
 		t.Fatal("failed first review: HeadSHA")
+	}
+}
+
+func TestCheckToken(t *testing.T) {
+	full := "sk-ant-oat01-" + strings.Repeat("a", 95)
+	if err := CheckToken(full); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckToken(full[:64]); err == nil {
+		t.Fatal("truncated token accepted")
+	}
+	if err := CheckToken("ghp_" + strings.Repeat("a", 100)); err == nil {
+		t.Fatal("wrong kind of token accepted")
 	}
 }
