@@ -14,11 +14,11 @@ One static binary. Frontend is server-rendered HTML with [htmx](https://htmx.org
 
 ## Install
 
-Download a binary from the [releases page](https://github.com/xifengjin/prb/releases) (macOS and Linux,
+Download a binary from the [releases page](https://github.com/xjin-archera/prb/releases) (macOS and Linux,
 amd64 and arm64), put it on your PATH, or build from source:
 
 ```bash
-go install github.com/xifengjin/prb/cmd/prb@latest
+go install github.com/xjin-archera/prb/cmd/prb@latest
 ```
 
 Then:

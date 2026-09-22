@@ -25,11 +25,11 @@ import (
 	"github.com/yuin/goldmark"
 	gmhtml "github.com/yuin/goldmark/renderer/html"
 
-	"github.com/xifengjin/prb/internal/config"
-	"github.com/xifengjin/prb/internal/diff"
-	"github.com/xifengjin/prb/internal/github"
-	"github.com/xifengjin/prb/internal/runner"
-	"github.com/xifengjin/prb/internal/store"
+	"github.com/xjin-archera/prb/internal/config"
+	"github.com/xjin-archera/prb/internal/diff"
+	"github.com/xjin-archera/prb/internal/github"
+	"github.com/xjin-archera/prb/internal/runner"
+	"github.com/xjin-archera/prb/internal/store"
 )
 
 //go:embed templates/*.html

@@ -19,11 +19,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xifengjin/prb/internal/config"
-	"github.com/xifengjin/prb/internal/github"
-	"github.com/xifengjin/prb/internal/prompt"
-	"github.com/xifengjin/prb/internal/store"
-	"github.com/xifengjin/prb/internal/worktree"
+	"github.com/xjin-archera/prb/internal/config"
+	"github.com/xjin-archera/prb/internal/github"
+	"github.com/xjin-archera/prb/internal/prompt"
+	"github.com/xjin-archera/prb/internal/store"
+	"github.com/xjin-archera/prb/internal/worktree"
 )
 
 const maxNudges = 2

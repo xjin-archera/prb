@@ -1,4 +1,4 @@
-module github.com/xifengjin/prb
+module github.com/xjin-archera/prb
 
 go 1.25.6
 

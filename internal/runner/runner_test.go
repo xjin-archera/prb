@@ -3,7 +3,7 @@ package runner
 import (
 	"testing"
 
-	"github.com/xifengjin/prb/internal/store"
+	"github.com/xjin-archera/prb/internal/store"
 )
 
 func TestParseResult(t *testing.T) {

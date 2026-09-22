@@ -5,10 +5,10 @@ import (
 	"html/template"
 	"testing"
 
-	"github.com/xifengjin/prb/internal/config"
-	"github.com/xifengjin/prb/internal/diff"
-	"github.com/xifengjin/prb/internal/github"
-	"github.com/xifengjin/prb/internal/store"
+	"github.com/xjin-archera/prb/internal/config"
+	"github.com/xjin-archera/prb/internal/diff"
+	"github.com/xjin-archera/prb/internal/github"
+	"github.com/xjin-archera/prb/internal/store"
 )
 
 // Every template must execute against representative data; html/template only fails at execution time.

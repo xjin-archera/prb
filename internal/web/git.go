@@ -3,7 +3,7 @@ package web
 import (
 	"context"
 
-	"github.com/xifengjin/prb/internal/worktree"
+	"github.com/xjin-archera/prb/internal/worktree"
 )
 
 func removeWorktree(ctx context.Context, repoPath, wt string) error {

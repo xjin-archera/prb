@@ -18,10 +18,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xifengjin/prb/internal/config"
-	"github.com/xifengjin/prb/internal/runner"
-	"github.com/xifengjin/prb/internal/store"
-	"github.com/xifengjin/prb/internal/web"
+	"github.com/xjin-archera/prb/internal/config"
+	"github.com/xjin-archera/prb/internal/runner"
+	"github.com/xjin-archera/prb/internal/store"
+	"github.com/xjin-archera/prb/internal/web"
 )
 
 //go:embed Dockerfile.runner
