@@ -59,3 +59,12 @@ func TestSinceTemplate(t *testing.T) {
 		t.Fatalf("since = %s", buf.String())
 	}
 }
+
+// The page loads these by URL; a missing file would fail silently in the browser.
+func TestStaticFilesEmbedded(t *testing.T) {
+	for _, f := range []string{"static/app.js", "static/style.css", "static/vendor/htmx.min.js", "static/vendor/sse.js"} {
+		if b, err := staticFS.ReadFile(f); err != nil || len(b) == 0 {
+			t.Errorf("%s: %v", f, err)
+		}
+	}
+}
