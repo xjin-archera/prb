@@ -1,0 +1,43 @@
+{{define "comment"}}
+{{- $c := .C}}{{$k := split .Key}}{{$d := .Diff}}
+{{- if .Editing}}
+<form class="ic editing sev-b-{{$c.Severity}} {{if eq $c.ID "new"}}new{{end}}" data-id="{{$c.ID}}"
+      {{if eq $c.ID "new"}}hx-post="/pr/{{$k}}/comments"{{else}}hx-post="/pr/{{$k}}/comments/{{$c.ID}}"{{end}} hx-target="this" hx-swap="outerHTML">
+  {{if $d}}<input type="hidden" name="diff" value="1">{{end}}
+  <input type="hidden" name="include_present" value="1"><input type="hidden" name="ai_present" value="1">
+  <div class="ic-head">
+    <label class="chk" title="include in the posted review"><input type="checkbox" name="include" value="1" {{if $c.Include}}checked{{end}}></label>
+    <input type="text" name="path" class="path mono" value="{{$c.Path}}" placeholder="path/in/repo.py">
+    <input type="number" name="line" class="line" value="{{$c.Line}}" min="1">
+    <select name="side"><option {{if eq $c.Side "RIGHT"}}selected{{end}}>RIGHT</option><option {{if eq $c.Side "LEFT"}}selected{{end}}>LEFT</option></select>
+    <select name="severity" class="sev sev-{{$c.Severity}}">{{range sevs}}<option {{if eq . $c.Severity}}selected{{end}}>{{.}}</option>{{end}}</select>
+    <label class="chk small" title="adds the 🤖 AI-generated prefix on post"><input type="checkbox" name="ai_generated" value="1" {{if $c.AIGenerated}}checked{{end}}> AI prefix</label>
+    <span class="spacer"></span>
+    {{if eq $c.ID "new"}}<button type="button" class="small" onclick="prb.removeCard(this)">Cancel</button>
+    {{else}}<button type="button" class="small" hx-get="/pr/{{$k}}/comments/{{$c.ID}}{{if $d}}?diff=1{{end}}" hx-target="closest .ic" hx-swap="outerHTML">Cancel</button>{{end}}
+    <button type="submit" class="small primary">{{if eq $c.ID "new"}}Add{{else}}Save{{end}}</button>
+  </div>
+  <textarea name="body" class="ic-body" rows="{{rows $c.Body 4 14}}" placeholder="Comment body (markdown). ⌘/Ctrl+Enter to save." autofocus>{{$c.Body}}</textarea>
+</form>
+{{- else}}
+<form class="ic sev-b-{{$c.Severity}} {{if not $c.Include}}excluded{{end}}" data-id="{{$c.ID}}"
+      hx-post="/pr/{{$k}}/comments/{{$c.ID}}" hx-trigger="change" hx-target="this" hx-swap="outerHTML">
+  {{if $d}}<input type="hidden" name="diff" value="1">{{end}}
+  <input type="hidden" name="include_present" value="1"><input type="hidden" name="ai_present" value="1">
+  <div class="ic-head">
+    <label class="chk" title="include in the posted review"><input type="checkbox" name="include" value="1" {{if $c.Include}}checked{{end}}></label>
+    <select name="severity" class="sev sev-{{$c.Severity}}">{{range sevs}}<option {{if eq . $c.Severity}}selected{{end}}>{{.}}</option>{{end}}</select>
+    <label class="chk small" title="adds the 🤖 AI-generated prefix on post"><input type="checkbox" name="ai_generated" value="1" {{if $c.AIGenerated}}checked{{end}}> AI prefix</label>
+    <span class="muted small mono">{{$c.Path}}:{{$c.Line}}{{if eq $c.Side "LEFT"}} (old){{end}}</span>
+    <span class="spacer"></span>
+    {{if not $d}}<button type="button" class="small" hx-get="/pr/{{$k}}/tab/diff" hx-target="#tabs" hx-vals='{"focus":"{{$c.ID}}"}' title="show in diff">diff</button>{{end}}
+    <button type="button" class="small" hx-get="/pr/{{$k}}/chat/prefill?comment={{$c.ID}}" hx-target="#chat" hx-swap="innerHTML" onclick="prb.openChat()" title="ask Claude Code about this comment">💬 Ask</button>
+    <button type="button" class="small" hx-get="/pr/{{$k}}/comments/{{$c.ID}}/edit{{if $d}}?diff=1{{end}}" hx-target="closest .ic" hx-swap="outerHTML">Edit</button>
+    <button type="button" class="small" hx-delete="/pr/{{$k}}/comments/{{$c.ID}}" hx-confirm="Remove this comment?" hx-target="closest .ic" hx-swap="outerHTML" title="remove">✕</button>
+  </div>
+  <div class="ic-md">{{if $c.Body}}{{md $c.Body}}{{else}}<span class="muted">(empty — click Edit)</span>{{end}}</div>
+</form>
+{{- end}}
+{{end}}
+
+{{define "comment_row"}}<tr class="crow"><td colspan="4">{{template "comment" .}}</td></tr>{{end}}

@@ -1,0 +1,43 @@
+{{define "index"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR Review Board</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/chroma.css">
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/vendor/sse.js"></script>
+</head>
+<body hx-ext="sse" sse-connect="/events">
+<header>
+  <h1>PR Review Board</h1>
+  <form id="filters" class="hdr-right" hx-get="/prs" hx-target="#list" hx-swap="innerHTML"
+        hx-trigger="load, change, keyup changed delay:300ms from:#q, prs-changed from:body, sse:status from:body, refresh from:body">
+    <input type="hidden" name="hide_bots" value="0">
+    <label class="chk"><input type="checkbox" name="hide_bots" value="1" {{if .Filter.HideBots}}checked{{end}}> hide bots</label>
+    <label class="chk"><input type="checkbox" name="hide_drafts" value="1" {{if .Filter.HideDrafts}}checked{{end}}> hide drafts</label>
+    <div class="dd" id="authorDD">
+      <button type="button" id="authorBtn" onclick="document.getElementById('authorMenu').hidden ^= 1; event.stopPropagation()">Author: all ▾</button>
+      <div class="dd-menu" id="authorMenu" hidden onclick="event.stopPropagation()"></div>
+    </div>
+    <input id="q" name="q" placeholder="filter…" type="search" value="{{.Filter.Q}}">
+    <button type="button" id="runSelected" class="primary" disabled
+            hx-post="/run" hx-include="#list .sel:checked" hx-swap="none">Run selected</button>
+    <button type="button" hx-get="/prs?refresh=1" hx-include="#filters" hx-target="#list" hx-swap="innerHTML">Refresh</button>
+    <button type="button" id="toggleList" title="Collapse the PR list">◧</button>
+    <span id="meta" class="muted"></span>
+    {{if .ClaudeMissing}}<span class="warn small">⚠ claude CLI not found on PATH</span>{{end}}
+  </form>
+</header>
+<main>
+  <section id="list"><div class="muted pad">Loading…</div></section>
+  <section id="detail"><div class="muted pad">Select a PR.</div></section>
+  <aside id="chat" hidden></aside>
+</main>
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>{{end}}
+
+{{define "toast"}}<div id="toast" {{if .OOB}}hx-swap-oob="beforeend"{{end}}><div class="{{if .Err}}err{{end}}" data-ttl="{{if .Err}}8000{{else}}3500{{end}}">{{.Msg}}</div></div>{{end}}

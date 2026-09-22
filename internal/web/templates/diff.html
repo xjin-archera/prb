@@ -1,0 +1,38 @@
+{{define "diff"}}
+{{- $dd := .}}{{$k := split .D.Key}}{{$ed := .Editable}}
+<div class="diffwrap">
+  <div class="diffbar">
+    <span class="muted small">{{len .Files}} files · <span class="adds">+{{.Adds}}</span>/<span class="dels">-{{.Dels}}</span>
+      {{if eq .Source "worktree"}} · diff the review ran on{{if .HeadSHA}} (<code>{{short .HeadSHA 8}}</code>){{end}}{{else}} · live diff from GitHub{{end}}
+      · {{if $ed}}click a line number to add a comment{{else}}<span class="warn">run the review to add comments</span>{{end}}</span>
+    <span class="spacer"></span>
+    <button type="button" class="small" onclick="prb.foldAll(false)">Expand all</button><button type="button" class="small" onclick="prb.foldAll(true)">Collapse all</button>
+  </div>
+  <div class="filelist">
+    {{range .Files}}<a class="filerow" href="#f{{.Index}}" onclick="prb.unfold('f{{.Index}}')"><span class="mono">{{.Path}}</span>{{if .Status}}<span class="badge {{.Status}}">{{.Status}}</span>{{end}}<span class="muted small"><span class="adds">+{{.Adds}}</span>/<span class="dels">-{{.Dels}}</span></span>{{if .Comments}}<span class="badge fc">{{.Comments}} 💬</span>{{end}}</a>{{end}}
+  </div>
+  {{if .Orphans}}<div class="block orphans"><h3>Comments whose line is not in this diff ({{len .Orphans}}) — folded into the summary on post</h3>{{range .Orphans}}{{template "comment" (cv $dd.D.Key . false false)}}{{end}}</div>{{end}}
+  {{range $f := .Files}}
+  <details class="dfile" id="f{{$f.Index}}" open>
+    <summary class="dfile-head"><span class="mono path">{{$f.Path}}</span>{{if $f.Status}}<span class="badge {{$f.Status}}">{{$f.Status}}</span>{{end}}<span class="muted small"><span class="adds">+{{$f.Adds}}</span>/<span class="dels">-{{$f.Dels}}</span></span>{{if $f.Comments}}<span class="badge fc">{{$f.Comments}} 💬</span>{{end}}</summary>
+    {{if $f.Binary}}<div class="pad muted small">binary file</div>{{else}}
+    <table class="difft">
+      {{range $h := $f.Hunks}}
+      <tr class="hunk"><td colspan="4">{{$h.Header}}</td></tr>
+      {{range $l := $h.Lines}}
+      {{- $cs := $dd.At $f.Path $l.Side $l.Line}}{{$cl := list_empty}}{{if eq $l.Type "ctx"}}{{$cl = $dd.At $f.Path "LEFT" $l.OldN}}{{end}}
+      <tr class="dl {{$l.Type}} {{if or $cs $cl}}has-c{{end}}">
+        <td class="ln" {{if and $ed $l.OldN}}hx-get="/pr/{{$k}}/comments/new?diff=1&path={{q $f.Path}}&line={{$l.OldN}}&side=LEFT" hx-target="closest tr" hx-swap="afterend" title="comment on old line {{$l.OldN}}"{{end}}>{{if $l.OldN}}{{$l.OldN}}{{end}}</td>
+        <td class="ln" {{if and $ed $l.NewN}}hx-get="/pr/{{$k}}/comments/new?diff=1&path={{q $f.Path}}&line={{$l.NewN}}&side=RIGHT" hx-target="closest tr" hx-swap="afterend" title="comment on line {{$l.NewN}}"{{end}}>{{if $l.NewN}}{{$l.NewN}}{{end}}</td>
+        <td class="mk">{{if eq $l.Type "add"}}+{{else if eq $l.Type "del"}}-{{end}}</td>
+        <td class="code hl">{{$l.HTML}}</td>
+      </tr>
+      {{if or $cs $cl}}<tr class="crow"><td colspan="4">{{range $cs}}{{template "comment" (cv $dd.D.Key . false true)}}{{end}}{{range $cl}}{{template "comment" (cv $dd.D.Key . false true)}}{{end}}</td></tr>{{end}}
+      {{end}}
+      {{end}}
+    </table>
+    {{end}}
+  </details>
+  {{end}}
+</div>
+{{end}}

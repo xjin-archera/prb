@@ -1,0 +1,25 @@
+{{define "chat"}}
+{{- $r := .Review}}{{$k := split .Key}}
+<div class="chatroot" hx-ext="sse" sse-connect="/pr/{{$k}}/chat/stream" data-key="{{.Key}}">
+  <div class="chat-head">
+    <b>Chat with Claude Code</b>
+    <span class="muted small">{{if $r.SessionID}}resumes the review session{{else}}new session in the worktree{{end}}{{if not $r.Worktree}} · <span class="warn">worktree removed — re-run to chat</span>{{end}}</span>
+    <span class="spacer"></span>
+    <button type="button" class="small" hx-delete="/pr/{{$k}}/chat" hx-confirm="Clear the chat history for this PR?" hx-target="#chat" hx-swap="innerHTML" {{if .Chatting}}disabled{{end}}>clear</button>
+    <button type="button" class="small" onclick="prb.closeChat()" title="close">✕</button>
+  </div>
+  <div class="chat-msgs" id="chatMsgs">
+    {{if and (not $r.Chat) (not .Chatting)}}<div class="muted small pad">Ask about a finding, request a re-check, or tell Claude Code to change the review — e.g. <i>“drop the nit on line 42”</i>, <i>“is the N+1 real? show the query”</i>, <i>“reword comment 2 more gently”</i>. Changes it makes to the review are loaded here automatically.</div>{{end}}
+    {{range $r.Chat}}<div class="msg {{.Role}}"><div class="who">{{if eq .Role "user"}}you{{else}}claude code{{end}} <span class="muted">{{ts .At}}</span></div><div class="body">{{md .Text}}</div></div>{{end}}
+    <div class="msg assistant live" id="live" {{if not .Chatting}}hidden{{end}}><div class="who">claude code <span class="spin">●</span></div><div class="body" sse-swap="text,tool" hx-swap="beforeend"></div></div>
+    <div hx-get="/pr/{{$k}}/chat" hx-trigger="sse:done" hx-target="#chat" hx-swap="innerHTML"></div>
+  </div>
+  <form class="chat-input" hx-post="/pr/{{$k}}/chat" hx-target="#chat" hx-swap="innerHTML">
+    <textarea id="chatInput" name="message" rows="3" placeholder="Message Claude Code… (⌘/Ctrl+Enter to send)" {{if .Chatting}}disabled{{end}}>{{.Prefill}}</textarea>
+    <div class="row">
+      {{if .Chatting}}<button type="button" class="danger" hx-post="/pr/{{$k}}/chat/cancel" hx-swap="none">Cancel</button><span class="muted small">Claude Code is working…</span>
+      {{else}}<button type="submit" class="primary">Send</button><span class="muted small">runs in the review worktree</span>{{end}}
+    </div>
+  </form>
+</div>
+{{end}}

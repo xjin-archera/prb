@@ -1,0 +1,14 @@
+# Sandbox for the headless review run. No GitHub credentials or SSH keys are mounted into it,
+# so the agent inside cannot post, push, or read private GitHub data. Claude auth comes from ~/.claude (mounted).
+FROM python:3.13-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git curl ca-certificates make jq ripgrep procps \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+RUN npm install -g @anthropic-ai/claude-code pnpm && npm cache clean --force
+# git refuses to touch repos owned by another uid on bind mounts; the worktree is ours by intent.
+RUN git config --system safe.directory '*'
+ENTRYPOINT []

@@ -1,0 +1,40 @@
+{{define "detail"}}
+{{- $p := .PR}}{{$r := .Review}}{{$k := split .Key}}
+<div class="dwrap" data-key="{{.Key}}" data-tab="{{.Tab}}">
+<div class="dhead">
+  <h2><a href="{{$p.URL}}" target="_blank" rel="noopener">{{$p.Repo}}#{{$p.Number}}</a> {{$p.Title}}</h2>
+  <div class="muted small">{{$p.Author}} · <code>{{$p.HeadRef}}</code> → <code>{{$p.BaseRef}}</code> · <span class="adds">+{{$p.Additions}}</span>/<span class="dels">-{{$p.Deletions}}</span> · {{$p.ChangedFiles}} files · head <code>{{short $p.HeadSHA 8}}</code>
+    {{if $p.ReviewDecision}} · {{$p.ReviewDecision}}{{end}}{{if $p.MyReviewState}} · you: {{$p.MyReviewState}}{{end}}</div>
+  <div class="actions">
+    {{template "status" (srow .)}}
+    {{if .Running}}<button class="danger" hx-post="/pr/{{$k}}/cancel" hx-swap="none">Cancel</button>
+    {{else}}<button class="primary" hx-post="/pr/{{$k}}/run" hx-swap="none" {{if not .HasClone}}disabled{{end}}>{{if $r.Result}}Re-run review{{else}}Run review{{end}}</button>{{end}}
+    {{if and (not .Running) (eq $r.Status "failed") $r.SessionID $r.Worktree}}<button hx-post="/pr/{{$k}}/continue" hx-swap="none" title="Resume the stored Claude Code session and ask it to write the result">Continue session</button>{{end}}
+    {{if and $r.Result (not .Running)}}<button class="danger" hx-post="/pr/{{$k}}/reset" hx-confirm="Delete this review result and remove its worktree?" hx-swap="none" title="Delete result and worktree">Reset</button>{{end}}
+    {{if $r.Result}}<button id="toggleChat" type="button" title="Chat with Claude Code about this review">💬 Chat{{if $r.Chat}} ({{len $r.Chat}}){{end}}</button>{{end}}
+    {{if $r.Worktree}}<span class="muted small">worktree <code>{{$r.Worktree}}</code></span>{{end}}
+    {{if $r.CostUSD}}<span class="muted small" title="Claude Code's API-equivalent estimate, not a bill on a subscription">{{money $r.CostUSD}} · {{$r.DurationS}}s</span>{{end}}
+    {{if $r.Posted}}<a class="small" href="{{$r.Posted.URL}}" target="_blank" rel="noopener">posted {{$r.Posted.Event}} ({{$r.Posted.Inline}} inline)</a>{{if $r.Posted.Cleanup}} <span class="muted small">worktree {{$r.Posted.Cleanup}}</span>{{end}}{{end}}
+  </div>
+  {{if $r.Error}}<div class="err small" style="margin-top:8px">{{$r.Error}}</div>{{end}}
+</div>
+<div id="tabs">{{template "tabs" .}}</div>
+</div>
+<aside id="chat" hx-swap-oob="true" {{if not $r.Result}}hidden{{end}}>
+  {{if $r.Result}}<div hx-get="/pr/{{$k}}/chat" hx-trigger="load" hx-swap="outerHTML"></div>{{end}}
+</aside>
+{{end}}
+
+{{define "tabs"}}
+{{- $k := split .Key}}
+<div class="tabbar">
+  {{range $t := (list "review" "diff" "log")}}
+  <div class="tab {{if eq $t $.Tab}}active{{end}}" hx-get="/pr/{{$k}}/tab/{{$t}}" hx-target="#tabs" hx-swap="innerHTML">{{$t}}{{if and (eq $t "review") $.Review.Result}} <span class="cnt">{{$.Review.IncludedCount}}</span>{{end}}</div>
+  {{end}}
+</div>
+<div id="tabbody" data-tab="{{.Tab}}" data-focus="{{.Focus}}">{{.Body}}</div>
+{{end}}
+
+{{define "log"}}
+<pre class="log" id="logpre" hx-ext="sse" sse-connect="/pr/{{split .Key}}/log" sse-swap="line" hx-swap="beforeend"></pre>
+{{end}}

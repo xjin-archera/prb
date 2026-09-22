@@ -1,0 +1,45 @@
+{{define "review"}}
+{{- $r := .Review}}{{$k := split .Key}}
+{{if not $r.Result}}
+  <div class="pad muted">{{if eq $r.Status "idle"}}No review yet. Click <b>Run review</b>.{{else if eq $r.Status "failed"}}Review failed — see Log.{{else}}Running — see Log.{{end}}</div>
+{{else}}
+{{- $res := $r.Result}}
+<form class="block" hx-post="/pr/{{$k}}/result" hx-trigger="change delay:500ms" hx-swap="none">
+  <h3>Verdict</h3>
+  <input type="text" name="verdict" style="width:100%" value="{{$res.Verdict}}">
+  {{if $res.LGTM}}<div class="ok small" style="margin-top:6px">Claude Code judged this PR clean (lgtm).</div>{{end}}
+  <h3 style="margin-top:12px">Verified locally</h3>
+  <textarea name="verified_locally" rows="3">{{$res.VerifiedLocally}}</textarea>
+</form>
+<div class="block">
+  <h3>Inline comments ({{$r.IncludedCount}}/{{len $res.Comments}} included) <button type="button" class="linkish" hx-get="/pr/{{$k}}/tab/diff" hx-target="#tabs">view in diff →</button></h3>
+  <div id="comments">
+    {{range $res.Comments}}{{template "comment" (cv $.Key . false false)}}{{end}}
+  </div>
+  <button type="button" hx-get="/pr/{{$k}}/comments/new" hx-target="#comments" hx-swap="beforeend">+ Add comment</button>
+</div>
+<form class="block" hx-post="/pr/{{$k}}/result" hx-trigger="change delay:500ms" hx-swap="none">
+  <h3>Summary body</h3>
+  <textarea name="summary_body" rows="{{rows $res.SummaryBody 6 24}}">{{$res.SummaryBody}}</textarea>
+</form>
+{{if $res.Cut}}<div class="block"><h3>Cut (not posting)</h3><ul class="cut small">{{range $res.Cut}}<li><b>{{.Finding}}</b> — <span class="muted">{{.Reason}}</span></li>{{end}}</ul></div>{{end}}
+<div class="block">
+  <form class="postbar" hx-post="/pr/{{$k}}/post" hx-target="#postresult" hx-swap="innerHTML"
+        hx-confirm="Post this review to GitHub? Run Check anchors first if you have not.">
+    <button type="button" hx-get="/pr/{{$k}}/preflight" hx-target="#postresult" hx-swap="innerHTML">Check anchors</button>
+    <select name="event"><option value="COMMENT">COMMENT</option><option value="APPROVE">APPROVE</option><option value="REQUEST_CHANGES">REQUEST_CHANGES</option></select>
+    <button type="submit" class="primary" {{if eq $r.Status "posted"}}title="already posted — this posts another review"{{end}}>Post to GitHub</button>
+    {{if .Stale}}<span class="warn small">⚠ PR has new commits since this review ran.</span>{{end}}
+  </form>
+  <div id="postresult"></div>
+</div>
+{{end}}
+{{end}}
+
+{{define "preflight"}}
+<div class="small" style="margin-top:8px">
+  <span class="ok">{{.Inline}} inline</span> · {{len .Unanchored}} → summary{{if .HeadMoved}} · <span class="warn">head moved since the review ran</span>{{end}}
+  {{if .Unanchored}}<ul class="cut">{{range .Unanchored}}<li><span class="warn">⚠ not in diff</span> <code>{{.Path}}:{{.Line}}</code> — folded into the summary</li>{{end}}</ul>{{end}}
+</div>
+{{end}}
+

@@ -1,0 +1,37 @@
+{{define "prlist"}}
+{{if not .Rows}}<div class="muted pad">No PRs match.</div>{{end}}
+{{range .Rows}}
+<div class="pr" data-key="{{.Key}}" hx-get="/pr/{{split .Key}}" hx-target="#detail" hx-swap="innerHTML" hx-trigger="click[!event.target.classList.contains('sel')]">
+  <input type="checkbox" class="sel" name="keys" value="{{.Key}}" {{if not .HasClone}}disabled title="no local clone"{{end}}>
+  <div>
+    <div class="title">{{.Title}}</div>
+    <div class="sub">
+      <code>{{repoOf .Repo}}#{{.Number}}</code>
+      <span>{{.Author}}</span>
+      <span><span class="adds">+{{.Additions}}</span>/<span class="dels">-{{.Deletions}}</span> · {{.ChangedFiles}}f</span>
+      <span>{{ago .UpdatedAt}}</span>
+      {{if .IsDraft}}<span class="badge draft">draft</span>{{end}}
+      {{if and (has .Reasons "mentioned") (not (has .Reasons "review-requested"))}}<span class="badge">mentioned</span>{{end}}
+      {{if not .HasClone}}<span class="badge failed">no clone</span>{{end}}
+    </div>
+  </div>
+  <div>{{template "status" .}}</div>
+</div>
+{{end}}
+<span id="meta" class="muted" hx-swap-oob="true">{{.Login}} · {{.Total}} PRs · {{.FetchedAt}}{{if .Warn}} · <span class="warn">{{.Warn}}</span>{{end}}</span>
+<div class="dd-menu" id="authorMenu" hidden hx-swap-oob="true" onclick="event.stopPropagation()">
+  <div class="dd-tools"><button type="button" onclick="prb.authors(true)">All</button><button type="button" onclick="prb.authors(false)">None</button></div>
+  {{range .Authors}}<label class="dd-row"><input type="checkbox" name="author" value="{{.Name}}" {{if .On}}checked{{end}}> {{.Name}} <span class="cnt">{{.Count}}</span></label>{{end}}
+</div>
+<button type="button" id="authorBtn" hx-swap-oob="true" onclick="document.getElementById('authorMenu').hidden ^= 1; event.stopPropagation()">Author: {{if .Filter.Authors}}{{len .Filter.Authors}} selected{{else}}all{{end}} ▾</button>
+{{end}}
+
+{{define "status"}}
+{{- $r := .Review -}}
+{{- if or (not $r) (eq $r.Status "idle")}}<span class="badge idle">not reviewed</span>
+{{- else}}<span class="badge {{$r.Status}}">{{$r.Status}}</span>
+  {{- if .Stale}} <span class="badge stale">new commits</span>{{end}}
+  {{- if and $r.Result $r.Result.LGTM (ne $r.Status "posted")}} <span class="badge lgtm">lgtm</span>
+  {{- else if and $r.Result (eq $r.Status "done")}} <span class="badge">{{$r.IncludedCount}}💬</span>{{end}}
+{{- end}}
+{{end}}
