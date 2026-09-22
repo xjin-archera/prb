@@ -18,7 +18,7 @@
     <label class="chk"><input type="checkbox" name="hide_bots" value="1" {{if .Filter.HideBots}}checked{{end}}> hide bots</label>
     <label class="chk"><input type="checkbox" name="hide_drafts" value="1" {{if .Filter.HideDrafts}}checked{{end}}> hide drafts</label>
     <div class="dd" id="authorDD">
-      <button type="button" id="authorBtn" onclick="document.getElementById('authorMenu').hidden ^= 1; event.stopPropagation()">Author: all ▾</button>
+      <button type="button" id="authorBtn" onclick="prb.toggleMenu(event)">Author: all ▾</button>
       <div class="dd-menu" id="authorMenu" hidden onclick="event.stopPropagation()"></div>
     </div>
     <input id="q" name="q" placeholder="filter…" type="search" value="{{.Filter.Q}}">

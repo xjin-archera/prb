@@ -23,7 +23,7 @@
   <div class="dd-tools"><button type="button" onclick="prb.authors(true)">All</button><button type="button" onclick="prb.authors(false)">None</button></div>
   {{range .Authors}}<label class="dd-row"><input type="checkbox" name="author" value="{{.Name}}" {{if .On}}checked{{end}}> {{.Name}} <span class="cnt">{{.Count}}</span></label>{{end}}
 </div>
-<button type="button" id="authorBtn" hx-swap-oob="true" onclick="document.getElementById('authorMenu').hidden ^= 1; event.stopPropagation()">Author: {{if .Filter.Authors}}{{len .Filter.Authors}} selected{{else}}all{{end}} ▾</button>
+<button type="button" id="authorBtn" hx-swap-oob="true" onclick="prb.toggleMenu(event)">Author: {{if .Filter.Authors}}{{len .Filter.Authors}} selected{{else}}all{{end}} ▾</button>
 {{end}}
 
 {{define "status"}}
