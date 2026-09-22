@@ -11,7 +11,7 @@
       <span><span class="adds">+{{.Additions}}</span>/<span class="dels">-{{.Deletions}}</span> · {{.ChangedFiles}}f</span>
       <span>{{ago .UpdatedAt}}</span>
       {{if .IsDraft}}<span class="badge draft">draft</span>{{end}}
-      {{if and (has .Reasons "mentioned") (not (has .Reasons "review-requested"))}}<span class="badge">mentioned</span>{{end}}
+      {{if not (has .Reasons "review-requested")}}{{if has .Reasons "team-request"}}<span class="badge team">team request</span>{{else if has .Reasons "reviewed"}}<span class="badge reviewed" title="you reviewed this PR; it is still open">reviewed by you{{if .MyReviewState}} · {{lower .MyReviewState}}{{end}}</span>{{else if has .Reasons "mentioned"}}<span class="badge">mentioned</span>{{end}}{{end}}
       {{if not .HasClone}}<span class="badge failed">no clone</span>{{end}}
     </div>
   </div>

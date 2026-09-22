@@ -26,7 +26,10 @@ A Claude subscription or API access for Claude Code.
 
 ## How a review runs
 
-1. `gh api graphql` finds open PRs with `review-requested:<you>` (and `mentions:<you>`).
+1. `gh api graphql` finds open PRs with `review-requested:<you>`, plus (each switchable in the config) PRs that
+   mention you, PRs you already reviewed that are still open (`reviewed-by:<you>`, so re-review requests after
+   fixes show up), and PRs that request a team you belong to (`team-review-requested`, teams read from
+   `gh api user/teams`). Badges in the list say which one applies.
 2. **Run review**: `git fetch origin pull/N/head` into your local clone, then a worktree at
    `~/worktrees/<repo>/<TICKET>-<N>` on branch `review/<TICKET>-<N>` (reused and hard-reset if it exists).
    Fetches into one clone are serialized, so parallel reviews never race on refs.
@@ -76,7 +79,7 @@ if it was removed, the follow-up recreates it at the same path and the session s
 | `ticket_pattern` | `(?i)\b[A-Z][A-Z0-9]+-\d+\b` | regex that names worktrees after the ticket in the branch |
 | `allowed_tools` / `disallowed_tools` | all normal tools; `gh`, `git push`, `git commit` denied | headless tool policy (the sandbox is the real guard) |
 | `cleanup_after_post` | false | remove the worktree, branch and PR ref after a successful post (true breaks nothing, but the follow-up must recreate the worktree) |
-| `hide_bots`, `include_mentions` | true | |
+| `hide_bots`, `include_mentions`, `include_reviewed`, `include_teams` | true | what the list includes besides direct review requests |
 | `host`, `port` | `127.0.0.1`, 8787 | local only; there is no auth |
 
 ## Sandbox

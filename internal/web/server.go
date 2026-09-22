@@ -236,7 +236,7 @@ func (s *Server) refreshPRs(ctx context.Context, force bool) ([]github.PR, error
 	s.prMu.Lock()
 	defer s.prMu.Unlock()
 	if force || time.Since(s.prAt) > 2*time.Minute || len(s.prCache) == 0 {
-		prs, err := github.SearchMyPRs(ctx, s.cfg.IncludeMentions)
+		prs, err := github.SearchMyPRs(ctx, github.SearchOptions{Mentions: s.cfg.IncludeMentions, Reviewed: s.cfg.IncludeReviewed, Teams: s.cfg.IncludeTeams})
 		s.prErr = err
 		if err == nil {
 			s.prCache = map[string]github.PR{}

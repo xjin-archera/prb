@@ -147,16 +147,63 @@ func nodeToPR(n searchNode, login, reason string) PR {
 	return pr
 }
 
-// SearchMyPRs lists open PRs that request the user's review, and optionally those that mention them.
-func SearchMyPRs(ctx context.Context, includeMentions bool) ([]PR, error) {
+// SearchOptions widens the PR list beyond direct review requests.
+type SearchOptions struct {
+	Mentions bool // open PRs that mention the user
+	Reviewed bool // open PRs the user already reviewed (author may have pushed fixes)
+	Teams    bool // open PRs that request a team the user belongs to
+}
+
+var (
+	teamsOnce sync.Once
+	teams     []string
+)
+
+// MyTeams returns "org/slug" for every team the user belongs to, cached for the process lifetime.
+func MyTeams(ctx context.Context) []string {
+	teamsOnce.Do(func() {
+		out, err := run(ctx, "", "api", "--paginate", "user/teams")
+		if err != nil {
+			return
+		}
+		dec := json.NewDecoder(bytes.NewReader(out))
+		for dec.More() {
+			var page []struct {
+				Slug string `json:"slug"`
+				Org  struct {
+					Login string `json:"login"`
+				} `json:"organization"`
+			}
+			if dec.Decode(&page) != nil {
+				return
+			}
+			for _, t := range page {
+				teams = append(teams, t.Org.Login+"/"+t.Slug)
+			}
+		}
+	})
+	return teams
+}
+
+// SearchMyPRs lists open PRs that request the user's review, plus the kinds enabled in opts.
+// Reasons on a PR: review-requested | mentioned | reviewed | team-request.
+func SearchMyPRs(ctx context.Context, opts SearchOptions) ([]PR, error) {
 	login, err := CurrentLogin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	type q struct{ reason, query string }
 	queries := []q{{"review-requested", "is:pr is:open review-requested:" + login}}
-	if includeMentions {
+	if opts.Mentions {
 		queries = append(queries, q{"mentioned", fmt.Sprintf("is:pr is:open mentions:%s -author:%s", login, login)})
+	}
+	if opts.Reviewed {
+		queries = append(queries, q{"reviewed", fmt.Sprintf("is:pr is:open reviewed-by:%s -author:%s", login, login)})
+	}
+	if opts.Teams {
+		for _, t := range MyTeams(ctx) {
+			queries = append(queries, q{"team-request", fmt.Sprintf("is:pr is:open team-review-requested:%s -author:%s", t, login)})
+		}
 	}
 	type res struct {
 		nodes []searchNode

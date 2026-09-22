@@ -63,6 +63,8 @@ textarea { width: 100%; font-family: var(--mono); font-size: 12.5px; line-height
 .badge.lgtm { color: var(--ok); }
 .badge.new { color: var(--ok); } .badge.deleted { color: var(--err); } .badge.renamed { color: var(--warn); }
 .badge.fc { border-color: var(--accent); color: var(--accent); }
+.badge.team { color: var(--run); border-color: var(--run); }
+.badge.reviewed { color: var(--accent); border-color: var(--accent); }
 @keyframes pulse { 50% { opacity: .5; } }
 .adds { color: var(--ok); } .dels { color: var(--err); }
 .warn { color: var(--warn); } .err { color: var(--err); } .ok { color: var(--ok); }

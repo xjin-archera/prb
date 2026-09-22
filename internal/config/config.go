@@ -33,7 +33,9 @@ type Config struct {
 	TicketPattern    string            `json:"ticket_pattern"` // regex that names worktrees after a ticket in the branch
 	CleanupAfterPost bool              `json:"cleanup_after_post"`
 	HideBots         bool              `json:"hide_bots"`
-	IncludeMentions  bool              `json:"include_mentions"`
+	IncludeMentions  bool              `json:"include_mentions"` // also list open PRs that mention you
+	IncludeReviewed  bool              `json:"include_reviewed"` // also list open PRs you already reviewed (waiting for re-review)
+	IncludeTeams     bool              `json:"include_teams"`    // also list PRs that request a team you belong to
 	Host             string            `json:"host"`
 	Port             int               `json:"port"`
 }
@@ -74,6 +76,8 @@ func Default() Config {
 		CleanupAfterPost: false, // keep the worktree so follow-up reviews and chat can resume the session
 		HideBots:         true,
 		IncludeMentions:  true,
+		IncludeReviewed:  true,
+		IncludeTeams:     true,
 		Host:             "127.0.0.1",
 		Port:             8787,
 	}
