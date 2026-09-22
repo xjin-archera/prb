@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/xifengjin/prb/internal/config"
+	"github.com/xifengjin/prb/internal/diff"
 	"github.com/xifengjin/prb/internal/github"
 	"github.com/xifengjin/prb/internal/store"
 )
@@ -65,6 +66,32 @@ func TestStaticFilesEmbedded(t *testing.T) {
 	for _, f := range []string{"static/app.js", "static/style.css", "static/vendor/htmx.min.js", "static/vendor/sse.js"} {
 		if b, err := staticFS.ReadFile(f); err != nil || len(b) == 0 {
 			t.Errorf("%s: %v", f, err)
+		}
+	}
+}
+
+func TestDiffTemplateWithGitHubRemarks(t *testing.T) {
+	s, err := New(config.Default(), config.Paths{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := diff.Parse("diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,2 @@\n x = 1\n-y = 2\n+y = 3\n")
+	diff.Highlight(files)
+	c := store.Comment{ID: "c1", Path: "a.py", Line: 2, Side: "RIGHT", Severity: "Nit", Body: "ours", Include: true}
+	rm := github.Remark{Kind: "inline", Author: "bob", Body: "theirs", Path: "a.py", Line: 2, Side: "RIGHT", URL: "https://x", CreatedAt: "2026-01-01T00:00:00Z"}
+	dd := diffData{D: detailData{Key: "o/r#1"}, Editable: true, Source: "github",
+		Files:   []diffFileView{{File: files[0], Comments: 1}},
+		ByLine:  map[string]map[string]map[int][]store.Comment{"a.py": {"RIGHT": {2: {c}}, "LEFT": {}}},
+		GH:      map[string]map[string]map[int][]github.Remark{"a.py": {"RIGHT": {2: {rm}}, "LEFT": {}}},
+		GHOther: []github.Remark{{Kind: "comment", Author: "ann", Body: "hi", CreatedAt: "2026-01-01T00:00:00Z"}}, GHCount: 2}
+	var buf bytes.Buffer
+	if err := s.tpl.ExecuteTemplate(&buf, "diff", dd); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"theirs", "ours", "bob", "GitHub discussion not on a diff line (1)", "2 GitHub comments", `class="gc"`} {
+		if !bytes.Contains([]byte(out), []byte(want)) {
+			t.Errorf("missing %q", want)
 		}
 	}
 }

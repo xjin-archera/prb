@@ -174,3 +174,14 @@ tr.crow td { padding: 6px 12px 2px 88px; background: var(--bg); border-top: 1px 
 .since-list li { margin-bottom: 3px; }
 .since-list code { font-family: var(--mono); font-size: 12px; }
 .remark p { display: inline; margin: 0; }
+
+/* GitHub comments shown in the diff (read-only) */
+.gc { border: 1px solid var(--line); border-left: 3px solid var(--muted); border-radius: 8px; background: var(--panel); padding: 8px 10px; margin: 0 0 8px; font-family: var(--sans); font-size: 13px; opacity: .92; }
+.gc-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+tr.has-gh td.ln:first-child { box-shadow: inset 3px 0 0 var(--muted); }
+tr.has-c.has-gh td.ln:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.ghother summary { cursor: pointer; list-style: none; }
+.ghother summary::-webkit-details-marker { display: none; }
+.ghother summary::before { content: "▸ "; color: var(--muted); }
+.ghother[open] summary::before { content: "▾ "; }
+.ghother .gc { margin-top: 8px; }

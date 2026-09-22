@@ -56,10 +56,37 @@ type Server struct {
 	prErr    error
 	chromaLt string
 	chromaDk string
+
+	rmMu    sync.Mutex
+	remarks map[string]remarkCache // PR key -> GitHub discussion, cached briefly
+}
+
+type remarkCache struct {
+	at   time.Time
+	list []github.Remark
+}
+
+// discussion returns the PR's GitHub remarks, refetching after two minutes or on force.
+func (s *Server) discussion(ctx context.Context, repo string, number int, force bool) ([]github.Remark, error) {
+	key := fmt.Sprintf("%s#%d", repo, number)
+	s.rmMu.Lock()
+	c, ok := s.remarks[key]
+	s.rmMu.Unlock()
+	if ok && !force && time.Since(c.at) < 2*time.Minute {
+		return c.list, nil
+	}
+	list, err := github.PRDiscussion(ctx, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	s.rmMu.Lock()
+	s.remarks[key] = remarkCache{at: time.Now(), list: list}
+	s.rmMu.Unlock()
+	return list, nil
 }
 
 func New(cfg config.Config, paths config.Paths, st *store.Store, jobs *runner.Manager) (*Server, error) {
-	s := &Server{cfg: cfg, paths: paths, st: st, jobs: jobs, prCache: map[string]github.PR{},
+	s := &Server{cfg: cfg, paths: paths, st: st, jobs: jobs, prCache: map[string]github.PR{}, remarks: map[string]remarkCache{},
 		md: goldmark.New(goldmark.WithRendererOptions(gmhtml.WithHardWraps()))}
 	funcs := template.FuncMap{
 		"md":  s.markdown,
@@ -99,13 +126,20 @@ func New(cfg config.Config, paths config.Paths, st *store.Store, jobs *runner.Ma
 			}
 			return time.Unix(t, 0).Format("15:04:05")
 		},
-		"sevs":       func() []string { return severities },
-		"lower":      strings.ToLower,
-		"attr":       func(s string) template.HTMLAttr { return template.HTMLAttr(s) },
-		"q":          url.QueryEscape,
-		"firstLine":  func(s string) string { l, _, _ := strings.Cut(s, "\n"); return l },
-		"list":       func(v ...string) []string { return v },
-		"list_empty": func() []store.Comment { return nil },
+		"sevs":      func() []string { return severities },
+		"lower":     strings.ToLower,
+		"attr":      func(s string) template.HTMLAttr { return template.HTMLAttr(s) },
+		"q":         url.QueryEscape,
+		"firstLine": func(s string) string { l, _, _ := strings.Cut(s, "\n"); return l },
+		"agoISO": func(s string) string {
+			if a := ago(s); a != "" {
+				return a + " ago"
+			}
+			return s
+		},
+		"concat_remarks": func(a, b []github.Remark) []github.Remark { return append(append([]github.Remark{}, a...), b...) },
+		"list":           func(v ...string) []string { return v },
+		"list_empty":     func() []store.Comment { return nil },
 		"cv": func(key string, c store.Comment, editing, inDiff bool) commentView {
 			return commentView{Key: key, C: c, Editing: editing, Diff: inDiff}
 		},
@@ -416,6 +450,7 @@ type detailData struct {
 	Body     template.HTML
 	ChatOpen bool
 	Focus    string
+	Force    bool // refetch GitHub discussion
 }
 
 func (s *Server) load(r *http.Request) (detailData, error) {
@@ -472,6 +507,7 @@ func (s *Server) tab(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Tab = r.PathValue("tab")
 	d.Focus = r.URL.Query().Get("focus")
+	d.Force = r.URL.Query().Get("refresh") == "1"
 	body, err := s.tabBody(r.Context(), d, d.Tab)
 	if err != nil {
 		s.fail(w, 500, err.Error())
@@ -488,7 +524,7 @@ func (s *Server) tabBody(ctx context.Context, d detailData, tab string) (templat
 	case "log":
 		err = s.tpl.ExecuteTemplate(&buf, "log", d)
 	case "diff":
-		dd, derr := s.diffData(ctx, d)
+		dd, derr := s.diffData(ctx, d, d.Force)
 		if derr != nil {
 			return "", derr
 		}
@@ -948,16 +984,24 @@ type diffData struct {
 	HeadSHA  string
 	Adds     int
 	Dels     int
-	ByLine   map[string]map[string]map[int][]store.Comment // path -> side -> line -> comments
+	ByLine   map[string]map[string]map[int][]store.Comment // path -> side -> line -> our comments
 	Orphans  []store.Comment
 	Editable bool
+	GH       map[string]map[string]map[int][]github.Remark // path -> side -> line -> GitHub inline comments
+	GHOther  []github.Remark                               // conversation comments, review bodies, outdated inline
+	GHCount  int
+	GHError  string
 }
 
 func (dd diffData) At(path, side string, line int) []store.Comment {
 	return dd.ByLine[path][side][line]
 }
 
-func (s *Server) diffData(ctx context.Context, d detailData) (diffData, error) {
+func (dd diffData) AtGH(path, side string, line int) []github.Remark {
+	return dd.GH[path][side][line]
+}
+
+func (s *Server) diffData(ctx context.Context, d detailData, force bool) (diffData, error) {
 	dd := diffData{D: d, Editable: d.Review.Result != nil && !d.Running}
 	var text string
 	patch := filepath.Join(d.Review.Worktree, ".pr-review", "diff.patch")
@@ -1008,6 +1052,40 @@ func (s *Server) diffData(ctx context.Context, d detailData) (diffData, error) {
 				dd.Orphans = append(dd.Orphans, c)
 			}
 		}
+	}
+	// GitHub's own discussion, shown read-only next to ours
+	remarks, err := s.discussion(ctx, d.PR.Repo, d.PR.Number, force)
+	if err != nil {
+		dd.GHError = err.Error()
+		return dd, nil
+	}
+	dd.GH = map[string]map[string]map[int][]github.Remark{}
+	inDiff := map[string]map[string]map[int]bool{}
+	for _, f := range files {
+		for _, h := range f.Hunks {
+			for _, l := range h.Lines {
+				if inDiff[f.Path] == nil {
+					inDiff[f.Path] = map[string]map[int]bool{"RIGHT": {}, "LEFT": {}}
+				}
+				if l.NewN > 0 {
+					inDiff[f.Path]["RIGHT"][l.NewN] = true
+				}
+				if l.OldN > 0 {
+					inDiff[f.Path]["LEFT"][l.OldN] = true
+				}
+			}
+		}
+	}
+	for _, rm := range remarks {
+		dd.GHCount++
+		if rm.Kind == "inline" && rm.Line > 0 && inDiff[rm.Path][rm.Side][rm.Line] {
+			if dd.GH[rm.Path] == nil {
+				dd.GH[rm.Path] = map[string]map[int][]github.Remark{"RIGHT": {}, "LEFT": {}}
+			}
+			dd.GH[rm.Path][rm.Side][rm.Line] = append(dd.GH[rm.Path][rm.Side][rm.Line], rm)
+			continue
+		}
+		dd.GHOther = append(dd.GHOther, rm)
 	}
 	return dd, nil
 }

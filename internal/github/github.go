@@ -449,22 +449,26 @@ type Remark struct {
 	Body      string
 	State     string // review state
 	Path      string // inline only
-	Line      int    // inline only
+	Line      int    // inline only; 0 when the comment is outdated (its line left the diff)
+	Side      string // inline only: LEFT | RIGHT
+	URL       string
 	CreatedAt string
 }
 
-// PRDiscussionSince returns remarks created after `since` (RFC3339), oldest first, excluding the given login.
-func PRDiscussionSince(ctx context.Context, repo string, number int, since, excludeLogin string) ([]Remark, error) {
+// PRDiscussion returns every remark on the PR, oldest first.
+func PRDiscussion(ctx context.Context, repo string, number int) ([]Remark, error) {
 	var all []Remark
-	out, err := run(ctx, "", "pr", "view", strconv.Itoa(number), "--repo", repo, "--json", "comments,reviews")
+	out, err := run(ctx, "", "pr", "view", strconv.Itoa(number), "--repo", repo, "--json", "comments,reviews,url")
 	if err != nil {
 		return nil, err
 	}
 	var v struct {
+		URL      string `json:"url"`
 		Comments []struct {
 			Author    struct{ Login string } `json:"author"`
 			Body      string                 `json:"body"`
 			CreatedAt string                 `json:"createdAt"`
+			URL       string                 `json:"url"`
 		} `json:"comments"`
 		Reviews []struct {
 			Author      struct{ Login string } `json:"author"`
@@ -477,11 +481,11 @@ func PRDiscussionSince(ctx context.Context, repo string, number int, since, excl
 		return nil, err
 	}
 	for _, c := range v.Comments {
-		all = append(all, Remark{Kind: "comment", Author: c.Author.Login, Body: c.Body, CreatedAt: c.CreatedAt})
+		all = append(all, Remark{Kind: "comment", Author: c.Author.Login, Body: c.Body, CreatedAt: c.CreatedAt, URL: c.URL})
 	}
 	for _, r := range v.Reviews {
 		if r.Body != "" {
-			all = append(all, Remark{Kind: "review", Author: r.Author.Login, Body: r.Body, State: r.State, CreatedAt: r.SubmittedAt})
+			all = append(all, Remark{Kind: "review", Author: r.Author.Login, Body: r.Body, State: r.State, CreatedAt: r.SubmittedAt, URL: v.URL})
 		}
 	}
 	out, err = run(ctx, "", "api", "--paginate", fmt.Sprintf("repos/%s/pulls/%d/comments", repo, number))
@@ -495,6 +499,8 @@ func PRDiscussionSince(ctx context.Context, repo string, number int, since, excl
 			Body      string                 `json:"body"`
 			Path      string                 `json:"path"`
 			Line      *int                   `json:"line"`
+			Side      string                 `json:"side"`
+			HTMLURL   string                 `json:"html_url"`
 			CreatedAt string                 `json:"created_at"`
 		}
 		if err := dec.Decode(&page); err != nil {
@@ -505,8 +511,22 @@ func PRDiscussionSince(ctx context.Context, repo string, number int, since, excl
 			if c.Line != nil {
 				line = *c.Line
 			}
-			all = append(all, Remark{Kind: "inline", Author: c.User.Login, Body: c.Body, Path: c.Path, Line: line, CreatedAt: c.CreatedAt})
+			side := c.Side
+			if side != "LEFT" {
+				side = "RIGHT"
+			}
+			all = append(all, Remark{Kind: "inline", Author: c.User.Login, Body: c.Body, Path: c.Path, Line: line, Side: side, URL: c.HTMLURL, CreatedAt: c.CreatedAt})
 		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].CreatedAt < all[j].CreatedAt })
+	return all, nil
+}
+
+// PRDiscussionSince returns remarks created after `since` (RFC3339), oldest first, excluding the given login.
+func PRDiscussionSince(ctx context.Context, repo string, number int, since, excludeLogin string) ([]Remark, error) {
+	all, err := PRDiscussion(ctx, repo, number)
+	if err != nil {
+		return nil, err
 	}
 	return FilterRemarks(all, since, excludeLogin), nil
 }
