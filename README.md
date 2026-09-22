@@ -44,6 +44,20 @@ A Claude subscription or API access for Claude Code.
 
 Live log per PR and live chat over SSE. Up to `max_parallel` (default 3) reviews at once.
 
+## Follow-up reviews
+
+When a reviewed PR gets new commits or new discussion, the detail page shows a **Since your review** panel:
+the commits after the head you reviewed, and remarks by others since your post (conversation comments,
+review bodies, inline replies). **Review the changes** resumes the same Claude Code session with the delta
+(`git diff <reviewed>...<head>` in `.pr-review/delta.patch`), the new commits, the new discussion, and your
+previous result. It decides which findings were addressed (they move to a **Resolved** list), re-anchors
+the open ones, reviews only the new changes for new problems, and writes a short follow-up summary.
+**Post follow-up** then posts one more review. Rounds are counted per PR.
+
+A force push makes the old head unreachable; the panel says so and the review compares by content instead.
+The worktree is kept after a post by default (`cleanup_after_post: false`) so the session context survives;
+if it was removed, the follow-up recreates it at the same path and the session still resumes.
+
 ## Config
 
 `~/.pr-review-board/config.json` is created on first run (`PRB_STATE_DIR` overrides the directory).
@@ -61,7 +75,7 @@ Live log per PR and live chat over SSE. Up to `max_parallel` (default 3) reviews
 | `review_skill` | `""` | a Claude Code skill to run instead of the built-in recipe, e.g. `agent-skills:review` |
 | `ticket_pattern` | `(?i)\b[A-Z][A-Z0-9]+-\d+\b` | regex that names worktrees after the ticket in the branch |
 | `allowed_tools` / `disallowed_tools` | all normal tools; `gh`, `git push`, `git commit` denied | headless tool policy (the sandbox is the real guard) |
-| `cleanup_after_post` | true | remove the worktree, branch and PR ref after a successful post |
+| `cleanup_after_post` | false | remove the worktree, branch and PR ref after a successful post (true breaks nothing, but the follow-up must recreate the worktree) |
 | `hide_bots`, `include_mentions` | true | |
 | `host`, `port` | `127.0.0.1`, 8787 | local only; there is no auth |
 

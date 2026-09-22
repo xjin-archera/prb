@@ -338,3 +338,141 @@ func PostReview(ctx context.Context, repo string, number int, payload ReviewPayl
 	_ = json.Unmarshal(out, &res)
 	return res.HTMLURL, nil
 }
+
+// Commit is one PR commit.
+type Commit struct {
+	SHA     string
+	Message string
+	Author  string
+	Date    string
+}
+
+// PRCommits lists the PR's commits oldest first.
+func PRCommits(ctx context.Context, repo string, number int) ([]Commit, error) {
+	out, err := run(ctx, "", "api", "--paginate", fmt.Sprintf("repos/%s/pulls/%d/commits", repo, number))
+	if err != nil {
+		return nil, err
+	}
+	// --paginate concatenates JSON arrays; split them apart
+	dec := json.NewDecoder(bytes.NewReader(out))
+	var all []Commit
+	for dec.More() {
+		var page []struct {
+			SHA    string `json:"sha"`
+			Commit struct {
+				Message string `json:"message"`
+				Author  struct {
+					Name string `json:"name"`
+					Date string `json:"date"`
+				} `json:"author"`
+			} `json:"commit"`
+			Author *struct {
+				Login string `json:"login"`
+			} `json:"author"`
+		}
+		if err := dec.Decode(&page); err != nil {
+			return nil, err
+		}
+		for _, c := range page {
+			who := c.Commit.Author.Name
+			if c.Author != nil && c.Author.Login != "" {
+				who = c.Author.Login
+			}
+			all = append(all, Commit{SHA: c.SHA, Message: c.Commit.Message, Author: who, Date: c.Commit.Author.Date})
+		}
+	}
+	return all, nil
+}
+
+// CommitsAfter returns the commits after sha. found=false means sha is not in the list (force push):
+// every commit is returned and the caller should treat the whole diff as new.
+func CommitsAfter(commits []Commit, sha string) (after []Commit, found bool) {
+	for i, c := range commits {
+		if c.SHA == sha {
+			return commits[i+1:], true
+		}
+	}
+	return commits, false
+}
+
+// Remark is a PR conversation comment, a review body, or an inline review comment.
+type Remark struct {
+	Kind      string // comment | review | inline
+	Author    string
+	Body      string
+	State     string // review state
+	Path      string // inline only
+	Line      int    // inline only
+	CreatedAt string
+}
+
+// PRDiscussionSince returns remarks created after `since` (RFC3339), oldest first, excluding the given login.
+func PRDiscussionSince(ctx context.Context, repo string, number int, since, excludeLogin string) ([]Remark, error) {
+	var all []Remark
+	out, err := run(ctx, "", "pr", "view", strconv.Itoa(number), "--repo", repo, "--json", "comments,reviews")
+	if err != nil {
+		return nil, err
+	}
+	var v struct {
+		Comments []struct {
+			Author    struct{ Login string } `json:"author"`
+			Body      string                 `json:"body"`
+			CreatedAt string                 `json:"createdAt"`
+		} `json:"comments"`
+		Reviews []struct {
+			Author      struct{ Login string } `json:"author"`
+			Body        string                 `json:"body"`
+			State       string                 `json:"state"`
+			SubmittedAt string                 `json:"submittedAt"`
+		} `json:"reviews"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return nil, err
+	}
+	for _, c := range v.Comments {
+		all = append(all, Remark{Kind: "comment", Author: c.Author.Login, Body: c.Body, CreatedAt: c.CreatedAt})
+	}
+	for _, r := range v.Reviews {
+		if r.Body != "" {
+			all = append(all, Remark{Kind: "review", Author: r.Author.Login, Body: r.Body, State: r.State, CreatedAt: r.SubmittedAt})
+		}
+	}
+	out, err = run(ctx, "", "api", "--paginate", fmt.Sprintf("repos/%s/pulls/%d/comments", repo, number))
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for dec.More() {
+		var page []struct {
+			User      struct{ Login string } `json:"user"`
+			Body      string                 `json:"body"`
+			Path      string                 `json:"path"`
+			Line      *int                   `json:"line"`
+			CreatedAt string                 `json:"created_at"`
+		}
+		if err := dec.Decode(&page); err != nil {
+			return nil, err
+		}
+		for _, c := range page {
+			line := 0
+			if c.Line != nil {
+				line = *c.Line
+			}
+			all = append(all, Remark{Kind: "inline", Author: c.User.Login, Body: c.Body, Path: c.Path, Line: line, CreatedAt: c.CreatedAt})
+		}
+	}
+	return FilterRemarks(all, since, excludeLogin), nil
+}
+
+// FilterRemarks keeps remarks after `since` that are not by excludeLogin, sorted oldest first.
+func FilterRemarks(all []Remark, since, excludeLogin string) []Remark {
+	var out []Remark
+	for _, r := range all {
+		if r.CreatedAt <= since || (excludeLogin != "" && r.Author == excludeLogin) {
+			continue
+		}
+		out = append(out, r)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedAt < out[j].CreatedAt })
+	return out
+}

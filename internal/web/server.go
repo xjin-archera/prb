@@ -103,6 +103,7 @@ func New(cfg config.Config, paths config.Paths, st *store.Store, jobs *runner.Ma
 		"lower":      strings.ToLower,
 		"attr":       func(s string) template.HTMLAttr { return template.HTMLAttr(s) },
 		"q":          url.QueryEscape,
+		"firstLine":  func(s string) string { l, _, _ := strings.Cut(s, "\n"); return l },
 		"list":       func(v ...string) []string { return v },
 		"list_empty": func() []store.Comment { return nil },
 		"cv": func(key string, c store.Comment, editing, inDiff bool) commentView {
@@ -161,6 +162,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+pr+"/tab/{tab}", s.tab)
 	mux.HandleFunc("POST "+pr+"/run", s.runOne)
 	mux.HandleFunc("POST "+pr+"/continue", s.continueOne)
+	mux.HandleFunc("POST "+pr+"/followup", s.followUp)
+	mux.HandleFunc("GET "+pr+"/since", s.since)
 	mux.HandleFunc("POST "+pr+"/cancel", s.cancel)
 	mux.HandleFunc("POST "+pr+"/reset", s.reset)
 	mux.HandleFunc("GET "+pr+"/log", s.logStream)
@@ -390,7 +393,7 @@ func (s *Server) runSelected(w http.ResponseWriter, r *http.Request) {
 	n := 0
 	for _, k := range r.Form["keys"] {
 		if p, ok := s.cachedPR(k); ok {
-			if err := s.jobs.Start(r.Context(), p, false); err == nil {
+			if err := s.jobs.Start(r.Context(), p, runner.ModeFull); err == nil {
 				n++
 			}
 		}
@@ -504,7 +507,7 @@ func (s *Server) runOne(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, 404, err.Error())
 		return
 	}
-	if err := s.jobs.Start(r.Context(), d.PR, false); err != nil {
+	if err := s.jobs.Start(r.Context(), d.PR, runner.ModeFull); err != nil {
 		s.fail(w, 409, err.Error())
 		return
 	}
@@ -517,11 +520,74 @@ func (s *Server) continueOne(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, 404, err.Error())
 		return
 	}
-	if err := s.jobs.Start(r.Context(), d.PR, true); err != nil {
+	if err := s.jobs.Start(r.Context(), d.PR, runner.ModeResume); err != nil {
 		s.fail(w, 409, err.Error())
 		return
 	}
 	s.redirectDetail(w, d.Key, "log")
+}
+
+func (s *Server) followUp(w http.ResponseWriter, r *http.Request) {
+	d, err := s.load(r)
+	if err != nil {
+		s.fail(w, 404, err.Error())
+		return
+	}
+	if err := s.jobs.Start(r.Context(), d.PR, runner.ModeFollowUp); err != nil {
+		s.fail(w, 409, err.Error())
+		return
+	}
+	s.redirectDetail(w, d.Key, "log")
+}
+
+type sinceData struct {
+	Key        string
+	Commits    []github.Commit
+	Found      bool
+	Remarks    []github.Remark
+	Stale      bool
+	SinceLabel string
+}
+
+// since renders what changed after the last review round: new commits and new discussion.
+func (s *Server) since(w http.ResponseWriter, r *http.Request) {
+	d, err := s.load(r)
+	if err != nil {
+		s.fail(w, 404, err.Error())
+		return
+	}
+	rv := d.Review
+	if rv.Result == nil || rv.HeadSHA == "" {
+		w.WriteHeader(204)
+		return
+	}
+	sd := sinceData{Key: d.Key, Stale: d.Stale, Found: true}
+	if d.Stale {
+		commits, err := github.PRCommits(r.Context(), d.PR.Repo, d.PR.Number)
+		if err != nil {
+			s.fail(w, 502, err.Error())
+			return
+		}
+		sd.Commits, sd.Found = github.CommitsAfter(commits, rv.HeadSHA)
+	}
+	at := rv.FinishedAt
+	if rv.Posted != nil && rv.Posted.At > 0 {
+		at = rv.Posted.At
+	}
+	since := time.Unix(at, 0).UTC().Format(time.RFC3339)
+	sd.SinceLabel = time.Unix(at, 0).Format("Jan 2 15:04")
+	login, _ := github.CurrentLogin(r.Context())
+	remarks, err := github.PRDiscussionSince(r.Context(), d.PR.Repo, d.PR.Number, since, login)
+	if err != nil {
+		s.fail(w, 502, err.Error())
+		return
+	}
+	sd.Remarks = remarks
+	if !sd.Stale && len(remarks) == 0 {
+		w.WriteHeader(204)
+		return
+	}
+	s.render(w, "since", sd)
 }
 
 // redirectDetail asks htmx to reload the detail panel on a given tab.

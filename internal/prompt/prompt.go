@@ -24,6 +24,7 @@ const Schema = `{
     }
   ],
   "cut": [{"finding": "string", "reason": "string"}],
+  "resolved": [{"finding": "string", "note": "string"}],
   "lgtm": "boolean — true only when the verdict is APPROVE with no Critical or Important findings"
 }`
 
@@ -116,4 +117,76 @@ func Chat(message, outPath string, hasSession bool) string {
 			"place, keeping its schema, then say what you changed.", outPath)
 	}
 	return head + "\n" + edit + "\n\nReviewer: " + message
+}
+
+// FollowUp is the context of an incremental re-review.
+type FollowUp struct {
+	PrevSHA     string
+	NewSHA      string
+	Commits     []string // "sha message (author)"
+	Discussion  []string // remarks since the last review
+	DeltaPath   string   // .pr-review/delta.patch, "" when the old head is unreachable
+	PreviousRes string   // path of the previous result JSON
+	HasSession  bool
+}
+
+func code(s string) string { return "`" + s + "`" }
+
+func short10(s string) string {
+	if len(s) > 10 {
+		return s[:10]
+	}
+	return s
+}
+
+// BuildFollowUp asks for a review of the changes since the previous round.
+func BuildFollowUp(pr PR, repo, baseRef, outPath, skill string, f FollowUp) string {
+	commits := "(none listed)"
+	if len(f.Commits) > 0 {
+		commits = strings.Join(f.Commits, "\n")
+	}
+	discussion := "(none)"
+	if len(f.Discussion) > 0 {
+		discussion = strings.Join(f.Discussion, "\n")
+	}
+	var delta string
+	if f.DeltaPath != "" {
+		delta = fmt.Sprintf("The changes since your review are in %s (%s).", code(f.DeltaPath),
+			code(fmt.Sprintf("git diff %s...%s", short10(f.PrevSHA), short10(f.NewSHA))))
+	} else {
+		delta = fmt.Sprintf("The previous head %s is no longer reachable (force push), so treat the whole diff as changed and "+
+			"compare against your previous findings by content.", short10(f.PrevSHA))
+	}
+	var memory string
+	if f.HasSession {
+		memory = "You reviewed this pull request earlier in this session; your findings are also saved in " + code(f.PreviousRes) + "."
+	} else {
+		memory = "Your previous review of this pull request is saved in " + code(f.PreviousRes) + " (same schema as below). Read it first."
+	}
+	recipe := ""
+	if skill != "" {
+		recipe = fmt.Sprintf("Use the %s skill for the review of the new changes.", code(skill))
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Follow-up review of pull request #%d of %s: %s\n", pr.Number, repo, pr.Title)
+	fmt.Fprintf(&b, "The PR was updated since your review. Head moved from %s to %s. The worktree is at the new head.\n", short10(f.PrevSHA), short10(f.NewSHA))
+	fmt.Fprintf(&b, "The full diff against %s is in %s. %s\n%s\n\n", code("origin/"+baseRef), code(".pr-review/diff.patch"), delta, memory)
+	fmt.Fprintf(&b, "New commits:\n%s\n\nNew discussion on the PR since your review (replies to you included):\n%s\n\n", commits, discussion)
+	b.WriteString(`Do three things:
+1. For each finding of your previous review, decide whether the new changes address it. Addressed findings go
+   in "resolved" with a short note (what fixed it, or why it no longer applies). Findings still open stay in
+   "comments", re-anchored to lines that exist in the current diff; reword them only if the code changed.
+   If the author pushed back in the discussion and is right, resolve the finding and say so in the note.
+2. Review only the new changes for new problems, with the same care as a first review. ` + recipe + `
+3. Write the summary_body as a follow-up: what was addressed, what is still open, what is new. Keep it short.
+
+Run the tests and linters the new changes touch when the environment allows it. Do not post anything to
+GitHub and do not commit or push. This is a headless run: never run commands in the background and never
+end your turn to "wait" for something; end only after result.json exists.
+
+Write the review as JSON to exactly this path, then reply DONE:
+    ` + outPath + `
+Schema:
+` + Schema + "\n")
+	return b.String()
 }

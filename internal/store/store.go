@@ -30,13 +30,20 @@ type Cut struct {
 	Reason  string `json:"reason"`
 }
 
+// Resolved is an earlier finding that a follow-up review judged addressed.
+type Resolved struct {
+	Finding string `json:"finding"`
+	Note    string `json:"note"`
+}
+
 type Result struct {
-	Verdict         string    `json:"verdict"`
-	VerifiedLocally string    `json:"verified_locally"`
-	SummaryBody     string    `json:"summary_body"`
-	Comments        []Comment `json:"comments"`
-	Cut             []Cut     `json:"cut"`
-	LGTM            bool      `json:"lgtm"`
+	Verdict         string     `json:"verdict"`
+	VerifiedLocally string     `json:"verified_locally"`
+	SummaryBody     string     `json:"summary_body"`
+	Comments        []Comment  `json:"comments"`
+	Cut             []Cut      `json:"cut"`
+	Resolved        []Resolved `json:"resolved,omitempty"`
+	LGTM            bool       `json:"lgtm"`
 }
 
 type Posted struct {
@@ -78,6 +85,8 @@ type Review struct {
 	CostUSD    float64
 	DurationS  float64
 	SessionID  string
+	PrevSHA    string // head of the previous round when this review is a follow-up
+	Rounds     int    // completed review rounds (1 = first review)
 	Chat       []ChatMessage
 }
 
@@ -137,7 +146,42 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
+	if err := migrate(db); err != nil {
+		return nil, err
+	}
 	return &Store{db: db}, nil
+}
+
+// migrate adds columns introduced after the first schema; SQLite has no ADD COLUMN IF NOT EXISTS.
+func migrate(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(reviews)`)
+	if err != nil {
+		return err
+	}
+	have := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notnull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		have[name] = true
+	}
+	rows.Close()
+	for col, ddl := range map[string]string{
+		"prev_sha": `ALTER TABLE reviews ADD COLUMN prev_sha TEXT NOT NULL DEFAULT ''`,
+		"rounds":   `ALTER TABLE reviews ADD COLUMN rounds INTEGER NOT NULL DEFAULT 0`,
+	} {
+		if !have[col] {
+			if _, err := db.Exec(ddl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
@@ -147,8 +191,8 @@ func (s *Store) Get(ctx context.Context, repo string, number int) (Review, error
 	r := Review{Repo: repo, Number: number, Status: Idle}
 	var result, posted sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT status, head_sha, worktree, started_at, finished_at, error, result, posted,
-		cost_usd, duration_s, session_id FROM reviews WHERE key = ?`, r.Key()).
-		Scan(&r.Status, &r.HeadSHA, &r.Worktree, &r.StartedAt, &r.FinishedAt, &r.Error, &result, &posted, &r.CostUSD, &r.DurationS, &r.SessionID)
+		cost_usd, duration_s, session_id, prev_sha, rounds FROM reviews WHERE key = ?`, r.Key()).
+		Scan(&r.Status, &r.HeadSHA, &r.Worktree, &r.StartedAt, &r.FinishedAt, &r.Error, &result, &posted, &r.CostUSD, &r.DurationS, &r.SessionID, &r.PrevSHA, &r.Rounds)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, nil
 	}
@@ -232,12 +276,13 @@ func (s *Store) Save(ctx context.Context, r Review) error {
 		posted = string(b)
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO reviews (key, repo, number, status, head_sha, worktree, started_at, finished_at,
-		error, result, posted, cost_usd, duration_s, session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		error, result, posted, cost_usd, duration_s, session_id, prev_sha, rounds) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(key) DO UPDATE SET status=excluded.status, head_sha=excluded.head_sha, worktree=excluded.worktree,
 		started_at=excluded.started_at, finished_at=excluded.finished_at, error=excluded.error, result=excluded.result,
-		posted=excluded.posted, cost_usd=excluded.cost_usd, duration_s=excluded.duration_s, session_id=excluded.session_id`,
+		posted=excluded.posted, cost_usd=excluded.cost_usd, duration_s=excluded.duration_s, session_id=excluded.session_id,
+		prev_sha=excluded.prev_sha, rounds=excluded.rounds`,
 		r.Key(), r.Repo, r.Number, r.Status, r.HeadSHA, r.Worktree, r.StartedAt, r.FinishedAt, r.Error, result, posted,
-		r.CostUSD, r.DurationS, r.SessionID)
+		r.CostUSD, r.DurationS, r.SessionID, r.PrevSHA, r.Rounds)
 	if err != nil {
 		return err
 	}

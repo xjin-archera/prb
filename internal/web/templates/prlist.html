@@ -30,6 +30,7 @@
 {{- $r := .Review -}}
 {{- if or (not $r) (eq $r.Status "idle")}}<span class="badge idle">not reviewed</span>
 {{- else}}<span class="badge {{$r.Status}}">{{$r.Status}}</span>
+  {{- if gt $r.Rounds 1}} <span class="badge">round {{$r.Rounds}}</span>{{end}}
   {{- if .Stale}} <span class="badge stale">new commits</span>{{end}}
   {{- if and $r.Result $r.Result.LGTM (ne $r.Status "posted")}} <span class="badge lgtm">lgtm</span>
   {{- else if and $r.Result (eq $r.Status "done")}} <span class="badge">{{$r.IncludedCount}}💬</span>{{end}}

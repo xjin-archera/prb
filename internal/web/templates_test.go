@@ -42,3 +42,20 @@ func TestTemplatesExecute(t *testing.T) {
 		}
 	}
 }
+
+func TestSinceTemplate(t *testing.T) {
+	s, err := New(config.Default(), config.Paths{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	d := sinceData{Key: "o/r#1", Stale: true, Found: false, SinceLabel: "Jan 2 15:04",
+		Commits: []github.Commit{{SHA: "abcdef1234", Message: "fix\n\nbody", Author: "a"}},
+		Remarks: []github.Remark{{Kind: "inline", Author: "b", Path: "a.py", Line: 3, Body: "done"}, {Kind: "review", Author: "c", State: "APPROVED", Body: "lgtm"}}}
+	if err := s.tpl.ExecuteTemplate(&buf, "since", d); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("Review the changes")) || !bytes.Contains(buf.Bytes(), []byte("force push")) {
+		t.Fatalf("since = %s", buf.String())
+	}
+}

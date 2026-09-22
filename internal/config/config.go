@@ -71,7 +71,7 @@ func Default() Config {
 		// The sandbox is the real guard; these stay denied as a belt-and-braces for the host runner.
 		DisallowedTools:  []string{"Bash(gh:*)", "Bash(git push:*)", "Bash(git commit:*)"},
 		TicketPattern:    `(?i)\b[A-Z][A-Z0-9]+-\d+\b`,
-		CleanupAfterPost: true,
+		CleanupAfterPost: false, // keep the worktree so follow-up reviews and chat can resume the session
 		HideBots:         true,
 		IncludeMentions:  true,
 		Host:             "127.0.0.1",

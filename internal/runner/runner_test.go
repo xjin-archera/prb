@@ -48,3 +48,14 @@ func TestSummarizeEvent(t *testing.T) {
 		t.Errorf("out = %q", out)
 	}
 }
+
+func TestParseResultResolved(t *testing.T) {
+	res, err := ParseResult([]byte(`{"verdict":"APPROVE","verified_locally":"","summary_body":"","comments":[],"cut":[],
+		"resolved":[{"finding":"N+1 in foo","note":"fixed by selectinload"}],"lgtm":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Resolved) != 1 || res.Resolved[0].Note != "fixed by selectinload" {
+		t.Fatalf("resolved = %+v", res.Resolved)
+	}
+}

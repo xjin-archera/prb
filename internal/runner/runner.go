@@ -28,6 +28,15 @@ import (
 
 const maxNudges = 2
 
+// Mode selects how a job starts.
+type Mode int
+
+const (
+	ModeFull     Mode = iota // fetch, fresh session, whole diff
+	ModeResume               // continue a session that ended without result.json
+	ModeFollowUp             // review the changes since the previous round in the same session
+)
+
 type job struct {
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -85,9 +94,8 @@ func (m *Manager) notify(key, status string) {
 	m.Events.Publish("*", string(b))
 }
 
-// Start queues a review. With resume, it continues the stored Claude Code session in the existing worktree
-// (for a run that ended without writing result.json) instead of fetching and starting over.
-func (m *Manager) Start(ctx context.Context, pr github.PR, resume bool) error {
+// Start queues a review job in the given mode.
+func (m *Manager) Start(ctx context.Context, pr github.PR, mode Mode) error {
 	key := pr.Key()
 	if m.IsRunning(key) {
 		return nil
@@ -96,14 +104,27 @@ func (m *Manager) Start(ctx context.Context, pr github.PR, resume bool) error {
 	if err != nil {
 		return err
 	}
-	if resume {
+	switch mode {
+	case ModeResume:
 		if r.SessionID == "" {
 			return errors.New("no Claude Code session stored for this review; re-run it")
 		}
 		if fi, err := os.Stat(r.Worktree); r.Worktree == "" || err != nil || !fi.IsDir() {
 			return errors.New("the review worktree is gone; re-run it")
 		}
-	} else {
+	case ModeFollowUp:
+		if r.Result == nil || r.HeadSHA == "" {
+			return errors.New("no completed review to follow up on; run a full review")
+		}
+		if r.HeadSHA == pr.HeadSHA {
+			return errors.New("the PR head has not moved since the last review")
+		}
+		if r.Status == store.Done || r.Status == store.PostedS {
+			r.PrevSHA = r.HeadSHA // a failed follow-up keeps the earlier PrevSHA for the retry
+		}
+		r.HeadSHA = pr.HeadSHA
+		m.Logs.Reset(key)
+	default:
 		r.HeadSHA = pr.HeadSHA
 		m.Logs.Reset(key)
 	}
@@ -124,7 +145,7 @@ func (m *Manager) Start(ctx context.Context, pr github.PR, resume bool) error {
 			delete(m.jobs, key)
 			m.mu.Unlock()
 		}()
-		m.run(jctx, pr, resume)
+		m.run(jctx, pr, mode)
 	}()
 	return nil
 }
@@ -177,9 +198,9 @@ func (m *Manager) openLog(repo string, number int, appendMode bool) (*os.File, e
 	return os.OpenFile(m.LogPath(repo, number), flag, 0o644)
 }
 
-func (m *Manager) run(ctx context.Context, pr github.PR, resume bool) {
+func (m *Manager) run(ctx context.Context, pr github.PR, mode Mode) {
 	key := pr.Key()
-	logf, lerr := m.openLog(pr.Repo, pr.Number, resume)
+	logf, lerr := m.openLog(pr.Repo, pr.Number, mode == ModeResume)
 	if lerr == nil {
 		defer logf.Close()
 	}
@@ -219,7 +240,7 @@ func (m *Manager) run(ctx context.Context, pr github.PR, resume bool) {
 	_ = m.st.Save(bg, r)
 	m.notify(key, store.Running)
 
-	err = m.review(ctx, pr, &r, resume, log)
+	err = m.review(ctx, pr, &r, mode, log)
 	switch {
 	case ctx.Err() != nil:
 		log("cancelled")
@@ -232,7 +253,8 @@ func (m *Manager) run(ctx context.Context, pr github.PR, resume bool) {
 	}
 }
 
-func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, resume bool, log func(string)) error {
+func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, mode Mode, log func(string)) error {
+	resume := mode == ModeResume
 	key := pr.Key()
 	repoPath := m.cfg.RepoPath(pr.Repo)
 	if fi, err := os.Stat(repoPath); repoPath == "" || err != nil || !fi.IsDir() {
@@ -260,6 +282,7 @@ func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, res
 		if err != nil {
 			return err
 		}
+		prevResult := r.Result // for a follow-up; nil otherwise
 		root := m.cfg.WorktreeRoot
 		if strings.HasPrefix(root, "~/") {
 			home, _ := os.UserHomeDir()
@@ -277,26 +300,42 @@ func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, res
 		_ = os.Remove(outPath)
 		p := prompt.PR{Number: detail.Number, Title: detail.Title, Author: detail.Author.Login, HeadRef: detail.HeadRefName,
 			HeadSHA: detail.HeadRefOid, Body: detail.Body}
-		for _, c := range detail.Comments {
-			p.Existing = append(p.Existing, fmt.Sprintf("- %s: %.400s", c.Author.Login, c.Body))
-		}
-		for _, rv := range detail.Reviews {
-			if rv.Body != "" {
-				p.Existing = append(p.Existing, fmt.Sprintf("- review by %s (%s): %.400s", rv.Author.Login, rv.State, rv.Body))
+		var text string
+		var extra []string
+		if mode == ModeFollowUp && prevResult != nil {
+			f, err := m.followUpContext(ctx, pr, r, wt, prevResult, log)
+			if err != nil {
+				return err
 			}
+			text = prompt.BuildFollowUp(p, pr.Repo, pr.BaseRef, outPath, m.cfg.ReviewSkill, f)
+			if f.HasSession {
+				extra = []string{"--resume", r.SessionID}
+			}
+		} else {
+			for _, c := range detail.Comments {
+				p.Existing = append(p.Existing, fmt.Sprintf("- %s: %.400s", c.Author.Login, c.Body))
+			}
+			for _, rv := range detail.Reviews {
+				if rv.Body != "" {
+					p.Existing = append(p.Existing, fmt.Sprintf("- review by %s (%s): %.400s", rv.Author.Login, rv.State, rv.Body))
+				}
+			}
+			text = prompt.Build(p, pr.Repo, pr.BaseRef, outPath, m.cfg.ReviewSkill)
+			r.Chat = nil
+			_ = m.st.ClearChat(context.Background(), key)
 		}
-		text := prompt.Build(p, pr.Repo, pr.BaseRef, outPath, m.cfg.ReviewSkill)
 		_ = os.WriteFile(filepath.Join(outDir, "prompt.md"), []byte(text), 0o644)
 
-		cmd := m.claudeCmd(wt, text, nil)
+		cmd := m.claudeCmd(wt, text, extra)
 		log("$ " + redactCmd(cmd, text))
 		c, _, sid, err := m.streamClaude(ctx, key, cmd, wt, log, nil)
 		if err != nil {
 			return err
 		}
 		cost, sessionID = c, sid
-		r.Chat = nil
-		_ = m.st.ClearChat(context.Background(), key)
+		if mode == ModeFollowUp && sid == "" && r.SessionID != "" {
+			sessionID = r.SessionID
+		}
 	}
 	// Headless runs sometimes end the turn to "wait" for a background task. Nudge the same session to finish
 	// instead of failing the whole review. A manual Continue starts here directly.
@@ -334,8 +373,71 @@ func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, res
 		return err
 	}
 	r.Result = &res
-	log(fmt.Sprintf("done: %d comments, %d cut, lgtm=%v, $%.2f, %.1fs", len(res.Comments), len(res.Cut), res.LGTM, cost, r.DurationS))
+	switch {
+	case mode == ModeFollowUp:
+		r.Rounds++
+		if r.Rounds < 2 {
+			r.Rounds = 2
+		}
+	case r.Rounds == 0:
+		r.Rounds = 1
+	}
+	log(fmt.Sprintf("done: %d comments, %d resolved, %d cut, lgtm=%v, $%.2f, %.1fs", len(res.Comments), len(res.Resolved), len(res.Cut), res.LGTM, cost, r.DurationS))
 	return nil
+}
+
+// followUpContext gathers what changed since the previous round: delta patch, new commits, new discussion.
+func (m *Manager) followUpContext(ctx context.Context, pr github.PR, r *store.Review, wt string, prev *store.Result, log func(string)) (prompt.FollowUp, error) {
+	outDir := filepath.Join(wt, ".pr-review")
+	f := prompt.FollowUp{PrevSHA: r.PrevSHA, NewSHA: pr.HeadSHA, PreviousRes: filepath.Join(outDir, "previous.json")}
+	pb, _ := json.MarshalIndent(prev, "", "  ")
+	if err := os.WriteFile(f.PreviousRes, pb, 0o644); err != nil {
+		return f, err
+	}
+	if delta, ok := worktree.Diff(ctx, wt, r.PrevSHA, "HEAD"); ok {
+		f.DeltaPath = filepath.Join(outDir, "delta.patch")
+		if err := os.WriteFile(f.DeltaPath, []byte(delta), 0o644); err != nil {
+			return f, err
+		}
+		log(fmt.Sprintf("delta %.10s...%.10s: %d lines", r.PrevSHA, pr.HeadSHA, strings.Count(delta, "\n")))
+	} else {
+		log(fmt.Sprintf("previous head %.10s unreachable (force push?); reviewing the full diff", r.PrevSHA))
+	}
+	commits, err := github.PRCommits(ctx, pr.Repo, pr.Number)
+	if err != nil {
+		return f, err
+	}
+	after, found := github.CommitsAfter(commits, r.PrevSHA)
+	if !found {
+		log("previous head not in the PR's commit list; listing all commits")
+	}
+	for _, c := range after {
+		msg, _, _ := strings.Cut(c.Message, "\n")
+		f.Commits = append(f.Commits, fmt.Sprintf("- %.10s %s (%s)", c.SHA, msg, c.Author))
+	}
+	since := time.Unix(r.FinishedAt, 0).UTC().Format(time.RFC3339)
+	if r.Posted != nil && r.Posted.At > 0 {
+		since = time.Unix(r.Posted.At, 0).UTC().Format(time.RFC3339)
+	}
+	login, _ := github.CurrentLogin(ctx)
+	remarks, err := github.PRDiscussionSince(ctx, pr.Repo, pr.Number, since, login)
+	if err != nil {
+		return f, err
+	}
+	for _, rm := range remarks {
+		switch rm.Kind {
+		case "inline":
+			f.Discussion = append(f.Discussion, fmt.Sprintf("- %s on %s:%d: %.500s", rm.Author, rm.Path, rm.Line, rm.Body))
+		case "review":
+			f.Discussion = append(f.Discussion, fmt.Sprintf("- review by %s (%s): %.500s", rm.Author, rm.State, rm.Body))
+		default:
+			f.Discussion = append(f.Discussion, fmt.Sprintf("- %s: %.500s", rm.Author, rm.Body))
+		}
+	}
+	// The session file is keyed by the worktree path, so resuming works even if the worktree was recreated.
+	f.HasSession = r.SessionID != ""
+	log(fmt.Sprintf("follow-up: %d new commits, %d new remarks, session=%v", len(after), len(remarks), f.HasSession))
+	return f, nil
 }
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
@@ -602,7 +704,8 @@ func ParseResult(data []byte) (store.Result, error) {
 			Body        string  `json:"body"`
 			AIGenerated *bool   `json:"ai_generated"`
 		} `json:"comments"`
-		Cut *[]store.Cut `json:"cut"`
+		Cut      *[]store.Cut     `json:"cut"`
+		Resolved []store.Resolved `json:"resolved"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return store.Result{}, fmt.Errorf("result.json is not valid JSON: %w", err)
@@ -618,7 +721,7 @@ func ParseResult(data []byte) (store.Result, error) {
 		return store.Result{}, fmt.Errorf("result.json missing keys: %s", strings.Join(missing, ", "))
 	}
 	res := store.Result{Verdict: *raw.Verdict, VerifiedLocally: *raw.VerifiedLocally, SummaryBody: *raw.SummaryBody,
-		LGTM: *raw.LGTM, Cut: *raw.Cut, Comments: []store.Comment{}}
+		LGTM: *raw.LGTM, Cut: *raw.Cut, Resolved: raw.Resolved, Comments: []store.Comment{}}
 	for _, c := range *raw.Comments {
 		side := c.Side
 		if side != "LEFT" {

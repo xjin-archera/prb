@@ -163,3 +163,12 @@ tr.crow td { padding: 6px 12px 2px 88px; background: var(--bg); border-top: 1px 
 .dd-menu .dd-row .cnt { margin-left: auto; color: var(--muted); font-size: 11px; }
 .dd-menu .dd-tools { display: flex; gap: 6px; padding: 2px 6px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .dd-menu .dd-tools button { padding: 2px 8px; font-size: 12px; }
+
+/* since your review */
+.since { margin: 12px 16px 0; border: 1px solid var(--warn); border-radius: 8px; background: var(--panel); padding: 10px 12px; }
+.since-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.since-sec { margin-top: 6px; }
+.since-list { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.since-list li { margin-bottom: 3px; }
+.since-list code { font-family: var(--mono); font-size: 12px; }
+.remark p { display: inline; margin: 0; }

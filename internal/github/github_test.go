@@ -33,3 +33,24 @@ func TestDiffLineMap(t *testing.T) {
 		t.Errorf("new file: %v", m["new.py"])
 	}
 }
+
+func TestCommitsAfterAndFilterRemarks(t *testing.T) {
+	cs := []Commit{{SHA: "a"}, {SHA: "b"}, {SHA: "c"}}
+	after, found := CommitsAfter(cs, "a")
+	if !found || len(after) != 2 || after[0].SHA != "b" {
+		t.Errorf("after a = %v %v", after, found)
+	}
+	if after, found = CommitsAfter(cs, "zz"); found || len(after) != 3 {
+		t.Errorf("unknown sha: %v %v", after, found)
+	}
+	rs := []Remark{
+		{Author: "me", Body: "mine", CreatedAt: "2026-09-22T12:00:00Z"},
+		{Author: "x", Body: "old", CreatedAt: "2026-09-21T00:00:00Z"},
+		{Author: "y", Body: "late", CreatedAt: "2026-09-23T00:00:00Z"},
+		{Author: "z", Body: "mid", CreatedAt: "2026-09-22T13:00:00Z"},
+	}
+	got := FilterRemarks(rs, "2026-09-22T11:00:00Z", "me")
+	if len(got) != 2 || got[0].Author != "z" || got[1].Author != "y" {
+		t.Errorf("filtered = %+v", got)
+	}
+}

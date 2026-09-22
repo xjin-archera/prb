@@ -41,3 +41,36 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatal("delete failed")
 	}
 }
+
+func TestMigrationAndRounds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	// simulate a database created before prev_sha/rounds existed
+	old, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.db.Exec(`CREATE TABLE legacy AS SELECT 1`); err != nil {
+		t.Fatal(err)
+	}
+	for _, col := range []string{"prev_sha", "rounds"} {
+		if _, err := old.db.Exec(`ALTER TABLE reviews DROP COLUMN ` + col); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+	st, err := Open(path) // must add the columns back
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	r := Review{Repo: "o/r", Number: 2, Status: Done, HeadSHA: "new", PrevSHA: "old", Rounds: 2,
+		Result: &Result{Resolved: []Resolved{{Finding: "f", Note: "n"}}, Comments: []Comment{}, Cut: []Cut{}}}
+	if err := st.Save(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Get(ctx, "o/r", 2)
+	if got.PrevSHA != "old" || got.Rounds != 2 || len(got.Result.Resolved) != 1 {
+		t.Fatalf("got = %+v", got)
+	}
+}

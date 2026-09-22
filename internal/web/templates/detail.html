@@ -18,6 +18,7 @@
   </div>
   {{if $r.Error}}<div class="err small" style="margin-top:8px">{{$r.Error}}</div>{{end}}
 </div>
+{{if and $r.Result (not .Running) (or .Stale (eq $r.Status "posted"))}}<div id="since" hx-get="/pr/{{$k}}/since" hx-trigger="load" hx-swap="outerHTML"><div class="muted small pad">checking what changed since your review…</div></div>{{end}}
 <div id="tabs">{{template "tabs" .}}</div>
 </div>
 <aside id="chat" hx-swap-oob="true" {{if not $r.Result}}hidden{{end}}>
@@ -37,4 +38,23 @@
 
 {{define "log"}}
 <pre class="log" id="logpre" hx-ext="sse" sse-connect="/pr/{{split .Key}}/log" sse-swap="line" hx-swap="beforeend"></pre>
+{{end}}
+
+{{define "since"}}
+<div id="since" class="since">
+  <div class="since-head">
+    <b>Since your review</b> <span class="muted small">({{.SinceLabel}})</span>
+    <span class="spacer"></span>
+    {{if .Stale}}<button class="primary small" hx-post="/pr/{{split .Key}}/followup" hx-swap="none" title="Resume the review session with the delta, the new commits and the new discussion">Review the changes</button>{{end}}
+    <button class="small" hx-post="/pr/{{split .Key}}/run" hx-confirm="Start over with a fresh full review?" hx-swap="none">Full re-run</button>
+  </div>
+  {{if .Stale}}
+  <div class="since-sec"><span class="muted small">{{if .Found}}{{len .Commits}} new commit{{if ne (len .Commits) 1}}s{{end}}{{else}}<span class="warn">history rewritten (force push); all {{len .Commits}} commits shown</span>{{end}}</span>
+    <ul class="since-list">{{range .Commits}}<li><code>{{short .SHA 8}}</code> {{firstLine .Message}} <span class="muted">— {{.Author}}</span></li>{{end}}</ul>
+  </div>
+  {{end}}
+  <div class="since-sec"><span class="muted small">{{len .Remarks}} new remark{{if ne (len .Remarks) 1}}s{{end}} from others</span>
+    {{if .Remarks}}<ul class="since-list">{{range .Remarks}}<li><b>{{.Author}}</b>{{if eq .Kind "inline"}} on <code>{{.Path}}:{{.Line}}</code>{{else if eq .Kind "review"}} <span class="badge">{{.State}}</span>{{end}}: <span class="remark">{{md .Body}}</span></li>{{end}}</ul>{{end}}
+  </div>
+</div>
 {{end}}

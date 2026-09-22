@@ -143,3 +143,12 @@ func Remove(ctx context.Context, repoPath, wt string) error {
 func DropPRRef(ctx context.Context, repoPath string, number int) {
 	_, _ = git(ctx, repoPath, "update-ref", "-d", fmt.Sprintf("refs/pr-review/%d", number))
 }
+
+// Diff returns `git diff from...to` run in the worktree, or "" when `from` is unknown (force push).
+func Diff(ctx context.Context, wt, from, to string) (string, bool) {
+	out, err := git(ctx, wt, "diff", from+"..."+to)
+	if err != nil {
+		return "", false
+	}
+	return out, true
+}

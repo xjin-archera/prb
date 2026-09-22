@@ -22,13 +22,14 @@
   <h3>Summary body</h3>
   <textarea name="summary_body" rows="{{rows $res.SummaryBody 6 24}}">{{$res.SummaryBody}}</textarea>
 </form>
+{{if $res.Resolved}}<div class="block"><h3>Resolved since the previous round ({{len $res.Resolved}})</h3><ul class="cut small">{{range $res.Resolved}}<li><span class="ok">✓</span> <b>{{.Finding}}</b> — <span class="muted">{{.Note}}</span></li>{{end}}</ul></div>{{end}}
 {{if $res.Cut}}<div class="block"><h3>Cut (not posting)</h3><ul class="cut small">{{range $res.Cut}}<li><b>{{.Finding}}</b> — <span class="muted">{{.Reason}}</span></li>{{end}}</ul></div>{{end}}
 <div class="block">
   <form class="postbar" hx-post="/pr/{{$k}}/post" hx-target="#postresult" hx-swap="innerHTML"
         hx-confirm="Post this review to GitHub? Run Check anchors first if you have not.">
     <button type="button" hx-get="/pr/{{$k}}/preflight" hx-target="#postresult" hx-swap="innerHTML">Check anchors</button>
     <select name="event"><option value="COMMENT">COMMENT</option><option value="APPROVE">APPROVE</option><option value="REQUEST_CHANGES">REQUEST_CHANGES</option></select>
-    <button type="submit" class="primary" {{if eq $r.Status "posted"}}title="already posted — this posts another review"{{end}}>Post to GitHub</button>
+    <button type="submit" class="primary" {{if eq $r.Status "posted"}}title="already posted — this posts another review"{{end}}>{{if gt $r.Rounds 1}}Post follow-up (round {{$r.Rounds}}){{else}}Post to GitHub{{end}}</button>
     {{if .Stale}}<span class="warn small">⚠ PR has new commits since this review ran.</span>{{end}}
   </form>
   <div id="postresult"></div>
