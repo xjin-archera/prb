@@ -448,8 +448,6 @@ func redactCmd(cmd []string, prompt string) string {
 		switch {
 		case c == prompt:
 			continue
-		case strings.HasPrefix(c, "CLAUDE_CODE_OAUTH_TOKEN="):
-			parts = append(parts, "CLAUDE_CODE_OAUTH_TOKEN=***")
 		case strings.ContainsAny(c, " \t\"'"):
 			parts = append(parts, fmt.Sprintf("%q", c))
 		default:
@@ -489,7 +487,6 @@ func (m *Manager) claudeCmd(wt, promptText string, extra []string) []string {
 		return base
 	}
 	home, _ := os.UserHomeDir()
-	tok, _ := m.oauthToken()
 	repoGit := repoGitDir(wt)
 	cmd := []string{
 		"docker", "run", "--rm", "-i", "--name", ContainerName(wt),
@@ -501,7 +498,7 @@ func (m *Manager) claudeCmd(wt, promptText string, extra []string) []string {
 		"-v", filepath.Join(home, ".claude.json") + ":" + filepath.Join(home, ".claude.json"),
 		"-e", "HOME=" + home,
 		"-e", "GH_TOKEN=", "-e", "GITHUB_TOKEN=", // no GitHub identity: cannot post or push
-		"-e", "CLAUDE_CODE_OAUTH_TOKEN=" + tok,
+		"-e", "CLAUDE_CODE_OAUTH_TOKEN", // value comes from the docker process env, never from argv (visible in ps)
 		"-w", wt, m.cfg.DockerImage,
 	}
 	return append(cmd, base...)
@@ -566,6 +563,13 @@ func (m *Manager) oauthToken() (string, error) {
 func (m *Manager) streamClaude(ctx context.Context, key string, argv []string, wt string, log func(string), onEvent func(map[string]any)) (float64, bool, string, error) {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = wt
+	if m.cfg.Runner == "docker" {
+		tok, err := m.oauthToken()
+		if err != nil {
+			return 0, false, "", err
+		}
+		cmd.Env = append(os.Environ(), "CLAUDE_CODE_OAUTH_TOKEN="+tok)
+	}
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 15 * time.Second
 	stdout, err := cmd.StdoutPipe()

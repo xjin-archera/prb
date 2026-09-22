@@ -14,15 +14,29 @@ One static binary. Frontend is server-rendered HTML with [htmx](https://htmx.org
 
 ## Install
 
+Download a binary from the [releases page](https://github.com/xifengjin/prb/releases) (macOS and Linux,
+amd64 and arm64), put it on your PATH, or build from source:
+
 ```bash
-go install github.com/xifengjin/prb/cmd/prb@latest   # or download a release binary
+go install github.com/xifengjin/prb/cmd/prb@latest
+```
+
+Then:
+
+```bash
 prb setup          # checks gh, git, claude, docker; stores the sandbox token
-prb build-image    # builds the Docker sandbox (once)
+prb build-image    # builds the Docker sandbox image (once; needs Docker running)
 prb                # http://127.0.0.1:8787
 ```
 
-Requirements on PATH: `gh` (logged in), `git`, `claude` (Claude Code), and `docker` for the sandbox.
-A Claude subscription or API access for Claude Code.
+Requirements on PATH: `gh` (logged in with `gh auth login`), `git`, `claude` (Claude Code, logged in), and
+`docker` for the sandbox. Without Docker set `"runner": "host"` in the config: reviews then run `claude`
+directly on your machine, guarded only by the tool denylist (no `gh`, `git push`, `git commit`).
+
+The review recipe is built in. If you have a Claude Code review skill you prefer, name it in the config as
+`review_skill` and the prompt tells Claude Code to use it; the app itself does not depend on any skill,
+plugin, or `CLAUDE.md`. Inside the sandbox Claude Code sees your own `~/.claude` (skills, plugins, settings),
+so it behaves like your shell does.
 
 ## How a review runs
 
@@ -91,6 +105,24 @@ installs). Capabilities dropped, 8g/4cpu by default.
 The Keychain login of Claude Code is not visible inside the container, so `prb setup` stores a long-lived
 token from `claude setup-token`: in the macOS Keychain (`pr-review-board/oauth`), or in the config on
 Linux. `CLAUDE_CODE_OAUTH_TOKEN` in the environment also works. The token is never written to logs.
+
+## Security notes
+
+- **Local only.** The server binds to `127.0.0.1` and has no login. Every request must carry the header
+  htmx sends and a loopback `Host`, so another website open in your browser cannot trigger a post through
+  the app, and a DNS-rebinding page is rejected.
+- **The sandbox has no GitHub identity.** It gets no `gh` config, no SSH keys, no `GH_TOKEN`. Posting to
+  GitHub happens only on the host, only when you click Post, with your own `gh` login.
+- **What the sandbox does see:** the PR worktree (read-write), the main clone's `.git` (read-only), and your
+  `~/.claude` and `~/.claude.json` (read-write, so sessions persist and can be resumed). On Linux
+  `~/.claude` can hold Claude Code's credentials file; the Claude Code token is needed there anyway.
+- **The token** for the sandbox is read from the macOS Keychain, `CLAUDE_CODE_OAUTH_TOKEN`, or the config
+  file (mode 0600), and is passed to `docker` through the process environment, never on the command line
+  and never into logs.
+- **Rendering.** Markdown from GitHub and from the model is rendered with raw HTML disabled; log lines and
+  diff text are escaped. The diff shown is the one the review ran on.
+- **What leaves your machine:** `gh` calls to GitHub, and the Claude Code session to Anthropic (the diff,
+  the files it reads in the worktree, and your chat messages). Nothing else.
 
 ## Layout
 

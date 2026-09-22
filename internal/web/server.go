@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -183,7 +184,38 @@ func ago(iso string) string {
 
 // ---------- routing ----------
 
+// Handler returns the router wrapped in local-only request checks.
 func (s *Server) Handler() http.Handler {
+	return guard(s.routes())
+}
+
+// guard rejects requests that do not come from this page in this browser:
+//   - Host must be a loopback name (blocks DNS-rebinding from a site that resolves to 127.0.0.1)
+//   - state-changing methods need the HX-Request header htmx sets; a cross-site form or fetch cannot add
+//     it without a CORS preflight, which this server never approves.
+func guard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "[::1]" {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("HX-Request") != "true" {
+			http.Error(w, "forbidden: requests must come from the app page", http.StatusForbidden)
+			return
+		}
+		if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+			http.Error(w, "forbidden origin", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(staticFS, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(sub))))
