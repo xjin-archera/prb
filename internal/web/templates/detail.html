@@ -17,6 +17,7 @@
     {{if $r.Posted}}<a class="small" href="{{$r.Posted.URL}}" target="_blank" rel="noopener">posted {{$r.Posted.Event}} ({{$r.Posted.Inline}} inline)</a>{{if $r.Posted.Cleanup}} <span class="muted small">worktree {{$r.Posted.Cleanup}}</span>{{end}}{{end}}
   </div>
   {{if $r.Error}}<div class="err small" style="margin-top:8px">{{$r.Error}}</div>{{end}}
+  {{if $r.Tampered}}<div class="warn small" style="margin-top:8px" title="{{$r.Tampered}}">⚠ The reviewer modified tracked files during the run; the app reverted them. Files: <code>{{$r.Tampered}}</code></div>{{end}}
 </div>
 {{if and $r.Result (not .Running) (or .Stale (eq $r.Status "posted"))}}<div id="since" hx-get="/pr/{{$k}}/since" hx-trigger="load" hx-swap="outerHTML"><div class="muted small pad">checking what changed since your review…</div></div>{{end}}
 <div id="tabs">{{template "tabs" .}}</div>

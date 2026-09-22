@@ -1,6 +1,10 @@
 package worktree
 
 import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"testing"
 )
@@ -22,5 +26,38 @@ func TestShortName(t *testing.T) {
 	}
 	if got := ShortName("feat/x", 5, nil); got != "x-5" {
 		t.Errorf("nil regexp: %q", got)
+	}
+}
+
+func TestRevertChanges(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("original\n"), 0o644)
+	run("add", "a.txt")
+	run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("tampered\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "untracked.log"), []byte("x"), 0o644)
+	files, err := RevertChanges(context.Background(), dir)
+	if err != nil || len(files) != 1 || files[0] != "a.txt" {
+		t.Fatalf("files=%v err=%v", files, err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a.txt")); string(b) != "original\n" {
+		t.Fatalf("not reverted: %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "untracked.log")); err != nil {
+		t.Fatal("untracked file must be left alone")
+	}
+	if files, _ := RevertChanges(context.Background(), dir); len(files) != 0 {
+		t.Fatalf("clean tree reported %v", files)
 	}
 }

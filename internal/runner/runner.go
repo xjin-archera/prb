@@ -361,6 +361,16 @@ func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, mod
 	if sessionID != "" {
 		r.SessionID = sessionID
 	}
+	// Review only: whatever the reviewer changed in tracked files is reverted and reported.
+	if changed, err := worktree.RevertChanges(ctx, wt); len(changed) > 0 {
+		r.Tampered = strings.Join(changed, "\n")
+		log(fmt.Sprintf("⚠ reviewer modified %d tracked file(s); reverted: %s", len(changed), strings.Join(changed, ", ")))
+		if err != nil {
+			log("revert failed: " + err.Error())
+		}
+	} else if mode != ModeResume {
+		r.Tampered = ""
+	}
 	if !exists(outPath) {
 		return errors.New("Claude Code finished but did not write result.json — see log")
 	}
@@ -465,10 +475,12 @@ func redactCmd(cmd []string, prompt string) string {
 func (m *Manager) claudeCmd(wt, promptText string, extra []string) []string {
 	base := []string{"claude", "-p", promptText}
 	base = append(base, extra...)
-	base = append(base, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits")
-	if len(m.cfg.AllowedTools) > 0 {
+	// permission mode "default": in print mode, a tool outside the allowlist is denied, not prompted.
+	base = append(base, "--output-format", "stream-json", "--verbose", "--permission-mode", "default")
+	allowed := reviewOnlyTools(m.cfg.AllowedTools)
+	if len(allowed) > 0 {
 		base = append(base, "--allowedTools")
-		base = append(base, m.cfg.AllowedTools...)
+		base = append(base, allowed...)
 	}
 	if len(m.cfg.DisallowedTools) > 0 {
 		base = append(base, "--disallowedTools")
@@ -488,20 +500,68 @@ func (m *Manager) claudeCmd(wt, promptText string, extra []string) []string {
 	}
 	home, _ := os.UserHomeDir()
 	repoGit := repoGitDir(wt)
+	wtMode := ""
+	if m.cfg.ReadonlyWorktree {
+		wtMode = ":ro"
+	}
 	cmd := []string{
 		"docker", "run", "--rm", "-i", "--name", ContainerName(wt),
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--memory", m.cfg.DockerMemory, "--cpus", fmt.Sprintf("%g", m.cfg.DockerCPUs),
-		"-v", wt + ":" + wt,
+		"-v", wt + ":" + wt + wtMode,
+		"-v", filepath.Join(wt, ".pr-review") + ":" + filepath.Join(wt, ".pr-review"), // always writable: result.json
 		"-v", repoGit + ":" + repoGit + ":ro", // the worktree's .git file points here
 		"-v", filepath.Join(home, ".claude") + ":" + filepath.Join(home, ".claude"),
 		"-v", filepath.Join(home, ".claude.json") + ":" + filepath.Join(home, ".claude.json"),
 		"-e", "HOME=" + home,
-		"-e", "GH_TOKEN=", "-e", "GITHUB_TOKEN=", // no GitHub identity: cannot post or push
 		"-e", "CLAUDE_CODE_OAUTH_TOKEN", // value comes from the docker process env, never from argv (visible in ps)
-		"-w", wt, m.cfg.DockerImage,
 	}
+	cmd = append(cmd, noPushDockerArgs()...) // no GitHub identity, git push disabled
+	cmd = append(cmd, "-w", wt, m.cfg.DockerImage)
 	return append(cmd, base...)
+}
+
+// editTools are never granted: the reviewer reads and runs, it does not change code. The result file
+// is written with a shell redirect (Bash), or through the narrow Edit rule for .pr-review/.
+var editTools = map[string]bool{"Write": true, "Edit": true, "MultiEdit": true, "NotebookEdit": true}
+
+func reviewOnlyTools(allowed []string) []string {
+	out := []string{}
+	for _, t := range allowed {
+		name, _, _ := strings.Cut(t, "(")
+		if editTools[name] {
+			continue
+		}
+		out = append(out, t)
+	}
+	return append(out, "Edit(.pr-review/**)")
+}
+
+// noPushEnv makes every git and gh invocation under the reviewer unable to reach GitHub for writes:
+//   - git reads config from these variables before any file, so `git push` to origin (or to the default
+//     remote) resolves to a bogus URL and fails, no matter how the command is spelled or wrapped;
+//   - gh gets an empty config dir and empty tokens, so it has no login at all.
+//
+// The app's own gh calls run in the server process and are not affected.
+func noPushEnv() []string {
+	return []string{
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=remote.origin.pushurl", "GIT_CONFIG_VALUE_0=disabled://pushing-is-blocked-by-prb",
+		"GIT_CONFIG_KEY_1=remote.pushDefault", "GIT_CONFIG_VALUE_1=prb-no-push",
+		"GIT_CONFIG_KEY_2=push.default", "GIT_CONFIG_VALUE_2=nothing",
+		"GH_CONFIG_DIR=/nonexistent/prb-no-gh",
+		"GH_TOKEN=", "GITHUB_TOKEN=", "GH_ENTERPRISE_TOKEN=", "GITHUB_ENTERPRISE_TOKEN=",
+	}
+}
+
+// noPushDockerArgs forwards the same variables into the container by name (values come from the process env).
+func noPushDockerArgs() []string {
+	var out []string
+	for _, kv := range noPushEnv() {
+		name, _, _ := strings.Cut(kv, "=")
+		out = append(out, "-e", name)
+	}
+	return out
 }
 
 func ContainerName(wt string) string {
@@ -563,12 +623,13 @@ func (m *Manager) oauthToken() (string, error) {
 func (m *Manager) streamClaude(ctx context.Context, key string, argv []string, wt string, log func(string), onEvent func(map[string]any)) (float64, bool, string, error) {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = wt
+	cmd.Env = append(os.Environ(), noPushEnv()...) // both runners: the reviewer can never push or use gh
 	if m.cfg.Runner == "docker" {
 		tok, err := m.oauthToken()
 		if err != nil {
 			return 0, false, "", err
 		}
-		cmd.Env = append(os.Environ(), "CLAUDE_CODE_OAUTH_TOKEN="+tok)
+		cmd.Env = append(cmd.Env, "CLAUDE_CODE_OAUTH_TOKEN="+tok)
 	}
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
 	cmd.WaitDelay = 15 * time.Second
@@ -873,6 +934,10 @@ func (m *Manager) chatTurn(ctx context.Context, r store.Review, message string) 
 	if err != nil {
 		fail("error: " + err.Error())
 		return
+	}
+	if changed, _ := worktree.RevertChanges(bg, r.Worktree); len(changed) > 0 {
+		cur.Tampered = strings.Join(changed, "\n")
+		log(fmt.Sprintf("⚠ reviewer modified %d tracked file(s) during chat; reverted", len(changed)))
 	}
 	if sid != "" {
 		cur.SessionID = sid

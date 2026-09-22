@@ -27,10 +27,11 @@ type Config struct {
 	ClaudeModel      string            `json:"claude_model"`
 	MaxBudgetUSD     float64           `json:"max_budget_usd"`
 	MaxTurns         int               `json:"max_turns"`
-	AllowedTools     []string          `json:"allowed_tools"`
+	AllowedTools     []string          `json:"allowed_tools"` // edit tools are always stripped: the reviewer never changes code
 	DisallowedTools  []string          `json:"disallowed_tools"`
-	ReviewSkill      string            `json:"review_skill"`   // optional Claude Code skill to run, e.g. "agent-skills:review"
-	TicketPattern    string            `json:"ticket_pattern"` // regex that names worktrees after a ticket in the branch
+	ReadonlyWorktree bool              `json:"readonly_worktree"` // docker: mount the worktree read-only (tests that need installs cannot run)
+	ReviewSkill      string            `json:"review_skill"`      // optional Claude Code skill to run, e.g. "agent-skills:review"
+	TicketPattern    string            `json:"ticket_pattern"`    // regex that names worktrees after a ticket in the branch
 	CleanupAfterPost bool              `json:"cleanup_after_post"`
 	HideBots         bool              `json:"hide_bots"`
 	IncludeMentions  bool              `json:"include_mentions"` // also list open PRs that mention you
@@ -69,7 +70,7 @@ func Default() Config {
 		DockerMemory: "8g",
 		DockerCPUs:   4,
 		MaxParallel:  3,
-		AllowedTools: []string{"Bash", "Read", "Write", "Edit", "Glob", "Grep", "LS", "Skill", "Agent", "TodoWrite", "WebFetch", "WebSearch"},
+		AllowedTools: []string{"Bash", "Read", "Glob", "Grep", "LS", "Skill", "Agent", "TodoWrite", "WebFetch", "WebSearch"},
 		// The sandbox is the real guard; these stay denied as a belt-and-braces for the host runner.
 		DisallowedTools:  []string{"Bash(gh:*)", "Bash(git push:*)", "Bash(git commit:*)"},
 		TicketPattern:    `(?i)\b[A-Z][A-Z0-9]+-\d+\b`,

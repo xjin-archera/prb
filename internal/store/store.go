@@ -87,6 +87,7 @@ type Review struct {
 	SessionID  string
 	PrevSHA    string // head of the previous round when this review is a follow-up
 	Rounds     int    // completed review rounds (1 = first review)
+	Tampered   string // files the reviewer modified in the worktree (reverted by the app), one per line
 	Chat       []ChatMessage
 }
 
@@ -174,6 +175,7 @@ func migrate(db *sql.DB) error {
 	for col, ddl := range map[string]string{
 		"prev_sha": `ALTER TABLE reviews ADD COLUMN prev_sha TEXT NOT NULL DEFAULT ''`,
 		"rounds":   `ALTER TABLE reviews ADD COLUMN rounds INTEGER NOT NULL DEFAULT 0`,
+		"tampered": `ALTER TABLE reviews ADD COLUMN tampered TEXT NOT NULL DEFAULT ''`,
 	} {
 		if !have[col] {
 			if _, err := db.Exec(ddl); err != nil {
@@ -191,8 +193,8 @@ func (s *Store) Get(ctx context.Context, repo string, number int) (Review, error
 	r := Review{Repo: repo, Number: number, Status: Idle}
 	var result, posted sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT status, head_sha, worktree, started_at, finished_at, error, result, posted,
-		cost_usd, duration_s, session_id, prev_sha, rounds FROM reviews WHERE key = ?`, r.Key()).
-		Scan(&r.Status, &r.HeadSHA, &r.Worktree, &r.StartedAt, &r.FinishedAt, &r.Error, &result, &posted, &r.CostUSD, &r.DurationS, &r.SessionID, &r.PrevSHA, &r.Rounds)
+		cost_usd, duration_s, session_id, prev_sha, rounds, tampered FROM reviews WHERE key = ?`, r.Key()).
+		Scan(&r.Status, &r.HeadSHA, &r.Worktree, &r.StartedAt, &r.FinishedAt, &r.Error, &result, &posted, &r.CostUSD, &r.DurationS, &r.SessionID, &r.PrevSHA, &r.Rounds, &r.Tampered)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, nil
 	}
@@ -276,13 +278,13 @@ func (s *Store) Save(ctx context.Context, r Review) error {
 		posted = string(b)
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO reviews (key, repo, number, status, head_sha, worktree, started_at, finished_at,
-		error, result, posted, cost_usd, duration_s, session_id, prev_sha, rounds) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		error, result, posted, cost_usd, duration_s, session_id, prev_sha, rounds, tampered) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(key) DO UPDATE SET status=excluded.status, head_sha=excluded.head_sha, worktree=excluded.worktree,
 		started_at=excluded.started_at, finished_at=excluded.finished_at, error=excluded.error, result=excluded.result,
 		posted=excluded.posted, cost_usd=excluded.cost_usd, duration_s=excluded.duration_s, session_id=excluded.session_id,
-		prev_sha=excluded.prev_sha, rounds=excluded.rounds`,
+		prev_sha=excluded.prev_sha, rounds=excluded.rounds, tampered=excluded.tampered`,
 		r.Key(), r.Repo, r.Number, r.Status, r.HeadSHA, r.Worktree, r.StartedAt, r.FinishedAt, r.Error, result, posted,
-		r.CostUSD, r.DurationS, r.SessionID, r.PrevSHA, r.Rounds)
+		r.CostUSD, r.DurationS, r.SessionID, r.PrevSHA, r.Rounds, r.Tampered)
 	if err != nil {
 		return err
 	}

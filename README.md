@@ -91,7 +91,8 @@ if it was removed, the follow-up recreates it at the same path and the session s
 | `max_turns` | 0 | |
 | `review_skill` | `""` | a Claude Code skill to run instead of the built-in recipe, e.g. `agent-skills:review` |
 | `ticket_pattern` | `(?i)\b[A-Z][A-Z0-9]+-\d+\b` | regex that names worktrees after the ticket in the branch |
-| `allowed_tools` / `disallowed_tools` | all normal tools; `gh`, `git push`, `git commit` denied | headless tool policy (the sandbox is the real guard) |
+| `allowed_tools` / `disallowed_tools` | read/run tools; edit tools are always stripped; `gh`, `git push`, `git commit` denied | headless tool policy (the sandbox and the git environment are the real guards) |
+| `readonly_worktree` | false | docker: mount the worktree read-only |
 | `cleanup_after_post` | false | remove the worktree, branch and PR ref after a successful post (true breaks nothing, but the follow-up must recreate the worktree) |
 | `hide_bots`, `include_mentions`, `include_reviewed`, `include_teams` | true | what the list includes besides direct review requests |
 | `host`, `port` | `127.0.0.1`, 8787 | local only; there is no auth |
@@ -111,6 +112,12 @@ Linux. `CLAUDE_CODE_OAUTH_TOKEN` in the environment also works. The token is nev
 - **Local only.** The server binds to `127.0.0.1` and has no login. Every request must carry the header
   htmx sends and a loopback `Host`, so another website open in your browser cannot trigger a post through
   the app, and a DNS-rebinding page is rejected.
+- **Review only, never a fix.** The reviewer gets no edit tools (`Write`, `Edit` and friends are stripped
+  from the allowlist; only `.pr-review/` is writable through them), git config passed through the
+  environment makes `git push` fail however it is invoked, and `gh` has no login in either runner. After
+  every run and every chat turn the app runs `git status` in the worktree, reverts any tracked file the
+  reviewer changed, and shows a warning with the file names. `readonly_worktree: true` additionally mounts
+  the worktree read-only in Docker (then installs and builds cannot run).
 - **The sandbox has no GitHub identity.** It gets no `gh` config, no SSH keys, no `GH_TOKEN`. Posting to
   GitHub happens only on the host, only when you click Post, with your own `gh` login.
 - **What the sandbox does see:** the PR worktree (read-write), the main clone's `.git` (read-only), and your

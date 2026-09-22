@@ -106,7 +106,8 @@ func Nudge(outPath string) string {
 func Chat(message, outPath string, hasSession bool) string {
 	head := "You are continuing the code review of this pull request with the reviewer, who is reading " +
 		"your review in a UI next to the diff. Answer briefly and concretely; cite file:line. " +
-		"Do not post to GitHub, commit, or push."
+		"Never modify repository files: this is a review, not a fix. The only file you may write is the review " +
+		"JSON under .pr-review/. Do not post to GitHub, commit, or push."
 	var edit string
 	if hasSession {
 		edit = fmt.Sprintf("If the reviewer asks you to change the review (reword, drop, add, or re-rate a comment, "+
@@ -180,8 +181,9 @@ func BuildFollowUp(pr PR, repo, baseRef, outPath, skill string, f FollowUp) stri
 2. Review only the new changes for new problems, with the same care as a first review. ` + recipe + `
 3. Write the summary_body as a follow-up: what was addressed, what is still open, what is new. Keep it short.
 
-Run the tests and linters the new changes touch when the environment allows it. Do not post anything to
-GitHub and do not commit or push. This is a headless run: never run commands in the background and never
+Run the tests and linters the new changes touch when the environment allows it. This is a review, not a
+fix: never modify, create, or delete repository files; the only file you write is the result JSON. Do not
+post anything to GitHub and do not commit or push. This is a headless run: never run commands in the background and never
 end your turn to "wait" for something; end only after result.json exists.
 
 Write the review as JSON to exactly this path, then reply DONE:

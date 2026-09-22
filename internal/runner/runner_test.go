@@ -59,3 +59,16 @@ func TestParseResultResolved(t *testing.T) {
 		t.Fatalf("resolved = %+v", res.Resolved)
 	}
 }
+
+func TestReviewOnlyTools(t *testing.T) {
+	got := reviewOnlyTools([]string{"Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "Read", "Edit(foo/**)"})
+	want := []string{"Bash", "Read", "Edit(.pr-review/**)"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v want %v", got, want)
+		}
+	}
+}

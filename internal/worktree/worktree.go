@@ -152,3 +152,25 @@ func Diff(ctx context.Context, wt, from, to string) (string, bool) {
 	}
 	return out, true
 }
+
+// RevertChanges lists tracked files the reviewer modified or deleted and restores them from HEAD.
+// Untracked files (build output, installs) are left alone; the next run cleans them.
+func RevertChanges(ctx context.Context, wt string) ([]string, error) {
+	out, err := git(ctx, wt, "status", "--porcelain", "--untracked-files=no")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if len(line) > 3 {
+			files = append(files, strings.TrimSpace(line[3:]))
+		}
+	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+	if _, err := git(ctx, wt, "checkout", "-q", "--", "."); err != nil {
+		return files, err
+	}
+	return files, nil
+}
