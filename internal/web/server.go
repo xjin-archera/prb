@@ -203,13 +203,16 @@ func guard(next http.Handler) http.Handler {
 			http.Error(w, "forbidden host", http.StatusForbidden)
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get("HX-Request") != "true" {
-			http.Error(w, "forbidden: requests must come from the app page", http.StatusForbidden)
-			return
-		}
-		if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-			http.Error(w, "forbidden origin", http.StatusForbidden)
-			return
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if r.Header.Get("HX-Request") != "true" {
+				http.Error(w, "forbidden: requests must come from the app page", http.StatusForbidden)
+				return
+			}
+			// GET navigations from a link elsewhere (a chat message, a bookmark) are fine; writes are not.
+			if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+				http.Error(w, "forbidden origin", http.StatusForbidden)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -426,7 +429,7 @@ func (s *Server) buildList(ctx context.Context, f filter, force bool) (listData,
 		if rv, ok := reviews[p.Key()]; ok {
 			rvc := rv
 			row.Review = &rvc
-			row.Stale = rv.Result != nil && (rv.Status == store.Done || rv.Status == store.PostedS) && rv.HeadSHA != p.HeadSHA
+			row.Stale = isStale(rv, p.HeadSHA)
 		}
 		d.Rows = append(d.Rows, row)
 	}
@@ -503,8 +506,20 @@ func (s *Server) load(r *http.Request) (detailData, error) {
 	}
 	d := detailData{PR: p, Key: k.key, HasClone: s.cfg.RepoPath(p.Repo) != "", Review: rv,
 		Running: s.jobs.IsRunning(k.key), Chatting: s.jobs.IsChatting(k.key),
-		Stale: rv.Result != nil && (rv.Status == store.Done || rv.Status == store.PostedS) && rv.HeadSHA != p.HeadSHA}
+		Stale: isStale(rv, p.HeadSHA)}
 	return d, nil
+}
+
+// isStale: the stored result was produced from a head other than the PR's current one.
+func isStale(rv store.Review, head string) bool {
+	if rv.Result == nil {
+		return false
+	}
+	switch rv.Status {
+	case store.Done, store.PostedS, store.Failed:
+		return runner.ReviewedSHA(rv) != head
+	}
+	return false
 }
 
 func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
@@ -627,8 +642,9 @@ func (s *Server) since(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rv := d.Review
+	empty := func() { s.render(w, "since_empty", nil) } // replaces the placeholder; a 204 would leave it in place
 	if rv.Result == nil || rv.HeadSHA == "" {
-		w.WriteHeader(204)
+		empty()
 		return
 	}
 	sd := sinceData{Key: d.Key, Stale: d.Stale, Found: true}
@@ -638,7 +654,7 @@ func (s *Server) since(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, 502, err.Error())
 			return
 		}
-		sd.Commits, sd.Found = github.CommitsAfter(commits, rv.HeadSHA)
+		sd.Commits, sd.Found = github.CommitsAfter(commits, runner.ReviewedSHA(rv))
 	}
 	at := rv.FinishedAt
 	if rv.Posted != nil && rv.Posted.At > 0 {
@@ -654,7 +670,7 @@ func (s *Server) since(w http.ResponseWriter, r *http.Request) {
 	}
 	sd.Remarks = remarks
 	if !sd.Stale && len(remarks) == 0 {
-		w.WriteHeader(204)
+		empty()
 		return
 	}
 	s.render(w, "since", sd)

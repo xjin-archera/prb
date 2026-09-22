@@ -28,6 +28,15 @@ import (
 
 const maxNudges = 2
 
+// ReviewedSHA is the PR head the stored result was produced from. After a failed follow-up the review's
+// HeadSHA already points at the new head, so the previous round's SHA is the one that counts.
+func ReviewedSHA(r store.Review) string {
+	if r.Status == store.Failed && r.PrevSHA != "" {
+		return r.PrevSHA
+	}
+	return r.HeadSHA
+}
+
 // Mode selects how a job starts.
 type Mode int
 
@@ -113,15 +122,14 @@ func (m *Manager) Start(ctx context.Context, pr github.PR, mode Mode) error {
 			return errors.New("the review worktree is gone; re-run it")
 		}
 	case ModeFollowUp:
-		if r.Result == nil || r.HeadSHA == "" {
+		reviewed := ReviewedSHA(r)
+		if r.Result == nil || reviewed == "" {
 			return errors.New("no completed review to follow up on; run a full review")
 		}
-		if r.HeadSHA == pr.HeadSHA {
+		if reviewed == pr.HeadSHA {
 			return errors.New("the PR head has not moved since the last review")
 		}
-		if r.Status == store.Done || r.Status == store.PostedS {
-			r.PrevSHA = r.HeadSHA // a failed follow-up keeps the earlier PrevSHA for the retry
-		}
+		r.PrevSHA = reviewed
 		r.HeadSHA = pr.HeadSHA
 		m.Logs.Reset(key)
 	default:
@@ -140,12 +148,12 @@ func (m *Manager) Start(ctx context.Context, pr github.PR, mode Mode) error {
 	m.notify(key, store.Queued)
 	go func() {
 		defer close(j.done)
-		defer func() {
-			m.mu.Lock()
-			delete(m.jobs, key)
-			m.mu.Unlock()
-		}()
-		m.run(jctx, pr, mode)
+		status := m.run(jctx, pr, mode)
+		// Remove the job before telling the UI, so a reload never sees "running" for a finished job.
+		m.mu.Lock()
+		delete(m.jobs, key)
+		m.mu.Unlock()
+		m.notify(key, status)
 	}()
 	return nil
 }
@@ -198,7 +206,8 @@ func (m *Manager) openLog(repo string, number int, appendMode bool) (*os.File, e
 	return os.OpenFile(m.LogPath(repo, number), flag, 0o644)
 }
 
-func (m *Manager) run(ctx context.Context, pr github.PR, mode Mode) {
+// run executes the job and returns its final status; the caller publishes it.
+func (m *Manager) run(ctx context.Context, pr github.PR, mode Mode) string {
 	key := pr.Key()
 	logf, lerr := m.openLog(pr.Repo, pr.Number, mode == ModeResume)
 	if lerr == nil {
@@ -215,15 +224,15 @@ func (m *Manager) run(ctx context.Context, pr github.PR, mode Mode) {
 	r, err := m.st.Get(bg, pr.Repo, pr.Number)
 	if err != nil {
 		log("FAILED: " + err.Error())
-		return
+		return store.Failed
 	}
-	finish := func(status, errMsg string) {
+	finish := func(status, errMsg string) string {
 		r.Status, r.Error = status, errMsg
 		r.FinishedAt = store.Now()
 		if err := m.st.Save(bg, r); err != nil {
 			log("FAILED to save: " + err.Error())
 		}
-		m.notify(key, status)
+		return status
 	}
 
 	// wait for a slot
@@ -231,8 +240,7 @@ func (m *Manager) run(ctx context.Context, pr github.PR, mode Mode) {
 	case m.sem <- struct{}{}:
 	case <-ctx.Done():
 		log("cancelled")
-		finish(store.Failed, "cancelled")
-		return
+		return finish(store.Failed, "cancelled")
 	}
 	defer func() { <-m.sem }()
 
@@ -244,12 +252,12 @@ func (m *Manager) run(ctx context.Context, pr github.PR, mode Mode) {
 	switch {
 	case ctx.Err() != nil:
 		log("cancelled")
-		finish(store.Failed, "cancelled")
+		return finish(store.Failed, "cancelled")
 	case err != nil:
 		log("FAILED: " + err.Error())
-		finish(store.Failed, err.Error())
+		return finish(store.Failed, err.Error())
 	default:
-		finish(store.Done, "")
+		return finish(store.Done, "")
 	}
 }
 

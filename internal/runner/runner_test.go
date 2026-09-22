@@ -72,3 +72,18 @@ func TestReviewOnlyTools(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewedSHA(t *testing.T) {
+	r := store.Review{Status: store.Done, HeadSHA: "new", PrevSHA: "old"}
+	if ReviewedSHA(r) != "new" {
+		t.Fatal("done review: HeadSHA is the reviewed head")
+	}
+	r.Status = store.Failed
+	if ReviewedSHA(r) != "old" {
+		t.Fatal("failed follow-up: the previous round's head is the reviewed head")
+	}
+	r.PrevSHA = ""
+	if ReviewedSHA(r) != "new" {
+		t.Fatal("failed first review: HeadSHA")
+	}
+}

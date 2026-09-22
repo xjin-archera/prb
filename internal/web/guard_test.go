@@ -17,6 +17,7 @@ func TestGuard(t *testing.T) {
 		want   int
 	}{
 		{"get local", "GET", "127.0.0.1:8787", nil, 200},
+		{"get from a link elsewhere", "GET", "127.0.0.1:8787", map[string]string{"Sec-Fetch-Site": "cross-site"}, 200},
 		{"get localhost", "GET", "localhost:8787", nil, 200},
 		{"rebinding host", "GET", "evil.example:8787", nil, 403},
 		{"cross-site form post", "POST", "127.0.0.1:8787", nil, 403},
