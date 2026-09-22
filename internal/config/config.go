@@ -15,30 +15,32 @@ import (
 
 // Config is the user configuration. Missing keys keep their defaults.
 type Config struct {
-	Repos            map[string]string `json:"repos"`     // owner/repo -> local clone path
-	ScanDirs         []string          `json:"scan_dirs"` // scanned one level deep for clones
-	WorktreeRoot     string            `json:"worktree_root"`
-	Runner           string            `json:"runner"` // "docker" (sandbox, no GitHub identity) | "host"
-	DockerImage      string            `json:"docker_image"`
-	DockerMemory     string            `json:"docker_memory"`
-	DockerCPUs       float64           `json:"docker_cpus"`
-	ClaudeOAuthToken string            `json:"claude_oauth_token"` // optional; env and Keychain are preferred
-	MaxParallel      int               `json:"max_parallel"`
-	ClaudeModel      string            `json:"claude_model"`
-	MaxBudgetUSD     float64           `json:"max_budget_usd"`
-	MaxTurns         int               `json:"max_turns"`
-	AllowedTools     []string          `json:"allowed_tools"` // edit tools are always stripped: the reviewer never changes code
-	DisallowedTools  []string          `json:"disallowed_tools"`
-	ReadonlyWorktree bool              `json:"readonly_worktree"` // docker: mount the worktree read-only (tests that need installs cannot run)
-	ReviewSkill      string            `json:"review_skill"`      // optional Claude Code skill to run, e.g. "agent-skills:review"
-	TicketPattern    string            `json:"ticket_pattern"`    // regex that names worktrees after a ticket in the branch
-	CleanupAfterPost bool              `json:"cleanup_after_post"`
-	HideBots         bool              `json:"hide_bots"`
-	IncludeMentions  bool              `json:"include_mentions"` // also list open PRs that mention you
-	IncludeReviewed  bool              `json:"include_reviewed"` // also list open PRs you already reviewed (waiting for re-review)
-	IncludeTeams     bool              `json:"include_teams"`    // also list PRs that request a team you belong to
-	Host             string            `json:"host"`
-	Port             int               `json:"port"`
+	Repos              map[string]string `json:"repos"`     // owner/repo -> local clone path
+	ScanDirs           []string          `json:"scan_dirs"` // scanned one level deep for clones
+	WorktreeRoot       string            `json:"worktree_root"`
+	Runner             string            `json:"runner"` // "docker" (sandbox, no GitHub identity) | "host"
+	DockerImage        string            `json:"docker_image"`
+	DockerMemory       string            `json:"docker_memory"`
+	DockerCPUs         float64           `json:"docker_cpus"`
+	ClaudeOAuthToken   string            `json:"claude_oauth_token"` // optional; env and Keychain are preferred
+	MaxParallel        int               `json:"max_parallel"`
+	ClaudeModel        string            `json:"claude_model"`
+	MaxBudgetUSD       float64           `json:"max_budget_usd"`
+	MaxTurns           int               `json:"max_turns"`
+	AllowedTools       []string          `json:"allowed_tools"` // edit tools are always stripped: the reviewer never changes code
+	DisallowedTools    []string          `json:"disallowed_tools"`
+	ReadonlyWorktree   bool              `json:"readonly_worktree"`   // docker: mount the worktree read-only (tests that need installs cannot run)
+	ReviewSkill        string            `json:"review_skill"`        // optional Claude Code skill to run, e.g. "agent-skills:review"
+	ReviewInstructions string            `json:"review_instructions"` // free text appended to every review prompt (house rules, focus areas, tone)
+	SummaryFormat      string            `json:"summary_format"`      // what summary_body must contain; empty = built-in section list
+	TicketPattern      string            `json:"ticket_pattern"`      // regex that names worktrees after a ticket in the branch
+	CleanupAfterPost   bool              `json:"cleanup_after_post"`
+	HideBots           bool              `json:"hide_bots"`
+	IncludeMentions    bool              `json:"include_mentions"` // also list open PRs that mention you
+	IncludeReviewed    bool              `json:"include_reviewed"` // also list open PRs you already reviewed (waiting for re-review)
+	IncludeTeams       bool              `json:"include_teams"`    // also list PRs that request a team you belong to
+	Host               string            `json:"host"`
+	Port               int               `json:"port"`
 }
 
 // Paths under the state directory.

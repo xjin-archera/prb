@@ -82,6 +82,10 @@ func New(cfg config.Config, paths config.Paths, st *store.Store) *Manager {
 	}
 }
 
+func (m *Manager) promptOptions() prompt.Options {
+	return prompt.Options{Skill: m.cfg.ReviewSkill, Instructions: m.cfg.ReviewInstructions, SummaryFormat: m.cfg.SummaryFormat}
+}
+
 func (m *Manager) LogPath(repo string, number int) string {
 	return filepath.Join(m.paths.Logs, strings.ReplaceAll(repo, "/", "__")+fmt.Sprintf("__%d.log", number))
 }
@@ -315,7 +319,7 @@ func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, mod
 			if err != nil {
 				return err
 			}
-			text = prompt.BuildFollowUp(p, pr.Repo, pr.BaseRef, outPath, m.cfg.ReviewSkill, f)
+			text = prompt.BuildFollowUp(p, pr.Repo, pr.BaseRef, outPath, m.promptOptions(), f)
 			if f.HasSession {
 				extra = []string{"--resume", r.SessionID}
 			}
@@ -328,7 +332,7 @@ func (m *Manager) review(ctx context.Context, pr github.PR, r *store.Review, mod
 					p.Existing = append(p.Existing, fmt.Sprintf("- review by %s (%s): %.400s", rv.Author.Login, rv.State, rv.Body))
 				}
 			}
-			text = prompt.Build(p, pr.Repo, pr.BaseRef, outPath, m.cfg.ReviewSkill)
+			text = prompt.Build(p, pr.Repo, pr.BaseRef, outPath, m.promptOptions())
 			r.Chat = nil
 			_ = m.st.ClearChat(context.Background(), key)
 		}

@@ -90,6 +90,8 @@ if it was removed, the follow-up recreates it at the same path and the session s
 | `max_budget_usd` | 0 | stop a run when Claude Code's cost estimate passes this (an estimate, not a bill on a subscription) |
 | `max_turns` | 0 | |
 | `review_skill` | `""` | a Claude Code skill to run instead of the built-in recipe, e.g. `agent-skills:review` |
+| `review_instructions` | `""` | free text appended to every review and follow-up prompt: house rules, focus areas, tone |
+| `summary_format` | built-in section list | what `summary_body` must contain, e.g. `"two sections: Blockers, Notes; one line each"` |
 | `ticket_pattern` | `(?i)\b[A-Z][A-Z0-9]+-\d+\b` | regex that names worktrees after the ticket in the branch |
 | `allowed_tools` / `disallowed_tools` | read/run tools; edit tools are always stripped; `gh`, `git push`, `git commit` denied | headless tool policy (the sandbox and the git environment are the real guards) |
 | `readonly_worktree` | false | docker: mount the worktree read-only |

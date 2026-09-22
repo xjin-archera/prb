@@ -8,11 +8,38 @@ import (
 
 var Severities = []string{"Critical", "Important", "Suggestion", "Nit", "FYI"}
 
+// DefaultSummaryFormat is what summary_body must contain unless the config overrides it.
+const DefaultSummaryFormat = "markdown review summary with these sections: Verdict, Overview, Critical Issues, " +
+	"Important Issues, Suggestions, What's Done Well, Verification Story. Reference inline comments by file:line; " +
+	"do not repeat their full text."
+
+// Options are the configurable parts of the prompt.
+type Options struct {
+	Skill         string // Claude Code skill to run instead of the built-in recipe
+	Instructions  string // appended verbatim
+	SummaryFormat string // replaces DefaultSummaryFormat
+}
+
+func (o Options) summary() string {
+	if strings.TrimSpace(o.SummaryFormat) != "" {
+		return strings.TrimSpace(o.SummaryFormat)
+	}
+	return DefaultSummaryFormat
+}
+
+func (o Options) extra() string {
+	if strings.TrimSpace(o.Instructions) == "" {
+		return ""
+	}
+	return "\nAdditional instructions from the reviewer:\n" + strings.TrimSpace(o.Instructions) + "\n"
+}
+
 // Schema is the JSON the reviewer must write. Kept as text: it is only shown to the model.
-const Schema = `{
+// %s is the summary_body format.
+const schemaTemplate = `{
   "verdict": "string — APPROVE or REQUEST CHANGES, then one sentence",
   "verified_locally": "string — exactly which tests/lint/build commands ran, with counts, and what could not run and why. Never fabricated.",
-  "summary_body": "string — markdown review summary: Verdict, Overview, Critical Issues, Important Issues, Suggestions, What's Done Well, Verification Story. Reference inline comments by file:line; do not repeat their full text.",
+  "summary_body": "string — %s",
   "comments": [
     {
       "path": "string — repo-relative path",
@@ -27,6 +54,13 @@ const Schema = `{
   "resolved": [{"finding": "string", "note": "string"}],
   "lgtm": "boolean — true only when the verdict is APPROVE with no Critical or Important findings"
 }`
+
+// Schema is the default schema text (built-in summary format).
+var Schema = fmt.Sprintf(schemaTemplate, strings.ReplaceAll(DefaultSummaryFormat, `"`, `\"`))
+
+func (o Options) schema() string {
+	return fmt.Sprintf(schemaTemplate, strings.ReplaceAll(o.summary(), `"`, `\"`))
+}
 
 // The built-in recipe, used when no Claude Code skill is configured.
 const defaultRecipe = `Review the diff on five axes, in this order: correctness (bugs, edge cases, error handling, concurrency,
@@ -47,7 +81,7 @@ type PR struct {
 	Existing []string // things already said on the PR
 }
 
-func Build(pr PR, repo, baseRef, outPath, skill string) string {
+func Build(pr PR, repo, baseRef, outPath string, o Options) string {
 	body := strings.TrimSpace(pr.Body)
 	if body == "" {
 		body = "(no description)"
@@ -57,9 +91,10 @@ func Build(pr PR, repo, baseRef, outPath, skill string) string {
 		existing = strings.Join(pr.Existing, "\n")
 	}
 	recipe := defaultRecipe
-	if skill != "" {
-		recipe = fmt.Sprintf("Use the `%s` skill for the review.", skill)
+	if o.Skill != "" {
+		recipe = fmt.Sprintf("Use the `%s` skill for the review.", o.Skill)
 	}
+	recipe += o.extra()
 	head := pr.HeadSHA
 	if len(head) > 10 {
 		head = head[:10]
@@ -91,7 +126,7 @@ Schema (types and meaning of each key):
 Every `+"`line`"+` must be a line that appears in the diff (RIGHT side unless the point is about deleted code).
 `+"`lgtm`"+` is true only for APPROVE with no Critical or Important findings. `+"`ai_generated`"+` is true on every comment.
 Put findings you dropped, and why, in `+"`cut`"+`.
-`, pr.Number, repo, pr.Title, pr.Author, pr.HeadRef, baseRef, head, baseRef, baseRef, body, existing, recipe, outPath, Schema)
+`, pr.Number, repo, pr.Title, pr.Author, pr.HeadRef, baseRef, head, baseRef, baseRef, body, existing, recipe, outPath, o.schema())
 }
 
 // Nudge asks a session that ended without writing the file to finish.
@@ -141,7 +176,7 @@ func short10(s string) string {
 }
 
 // BuildFollowUp asks for a review of the changes since the previous round.
-func BuildFollowUp(pr PR, repo, baseRef, outPath, skill string, f FollowUp) string {
+func BuildFollowUp(pr PR, repo, baseRef, outPath string, o Options, f FollowUp) string {
 	commits := "(none listed)"
 	if len(f.Commits) > 0 {
 		commits = strings.Join(f.Commits, "\n")
@@ -165,8 +200,8 @@ func BuildFollowUp(pr PR, repo, baseRef, outPath, skill string, f FollowUp) stri
 		memory = "Your previous review of this pull request is saved in " + code(f.PreviousRes) + " (same schema as below). Read it first."
 	}
 	recipe := ""
-	if skill != "" {
-		recipe = fmt.Sprintf("Use the %s skill for the review of the new changes.", code(skill))
+	if o.Skill != "" {
+		recipe = fmt.Sprintf("Use the %s skill for the review of the new changes.", code(o.Skill))
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Follow-up review of pull request #%d of %s: %s\n", pr.Number, repo, pr.Title)
@@ -180,7 +215,7 @@ func BuildFollowUp(pr PR, repo, baseRef, outPath, skill string, f FollowUp) stri
    If the author pushed back in the discussion and is right, resolve the finding and say so in the note.
 2. Review only the new changes for new problems, with the same care as a first review. ` + recipe + `
 3. Write the summary_body as a follow-up: what was addressed, what is still open, what is new. Keep it short.
-
+` + o.extra() + `
 Run the tests and linters the new changes touch when the environment allows it. This is a review, not a
 fix: never modify, create, or delete repository files; the only file you write is the result JSON. Do not
 post anything to GitHub and do not commit or push. This is a headless run: never run commands in the background and never
@@ -189,6 +224,6 @@ end your turn to "wait" for something; end only after result.json exists.
 Write the review as JSON to exactly this path, then reply DONE:
     ` + outPath + `
 Schema:
-` + Schema + "\n")
+` + o.schema() + "\n")
 	return b.String()
 }
