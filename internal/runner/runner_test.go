@@ -101,3 +101,10 @@ func TestCheckToken(t *testing.T) {
 		t.Fatal("wrong kind of token accepted")
 	}
 }
+
+func TestSummarizeInitShowsModel(t *testing.T) {
+	out := summarizeEvent(map[string]any{"type": "system", "subtype": "init", "model": "claude-fable-5-1", "session_id": "x"})
+	if len(out) != 1 || !strings.HasPrefix(out[0], "model: claude-fable-5-1") {
+		t.Fatalf("out = %q", out)
+	}
+}

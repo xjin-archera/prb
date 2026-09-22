@@ -775,6 +775,12 @@ func summarizeEvent(ev map[string]any) []string {
 				out = append(out, "✗ tool error: "+trunc(txt, 300))
 			}
 		}
+	case "system":
+		if ev["subtype"] == "init" {
+			if model := str(ev["model"]); model != "" {
+				out = append(out, "model: "+model+" (set claude_model in config.json to override)")
+			}
+		}
 	case "result":
 		cost, _ := ev["total_cost_usd"].(float64)
 		turns, _ := ev["num_turns"].(float64)
