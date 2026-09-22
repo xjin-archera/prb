@@ -1,0 +1,15 @@
+#!/bin/sh
+# fake gh for offline UI tests
+case "$*" in
+  "api user -q .login") echo me ;;
+  api\ graphql*) cat <<'J'
+{"data":{"search":{"nodes":[{"number":7,"title":"Add widget","url":"https://example.invalid/pr/7","isDraft":false,"createdAt":"2026-09-20T10:00:00Z","updatedAt":"2026-09-22T10:00:00Z","additions":3,"deletions":1,"changedFiles":1,"headRefOid":"abcdef1234567890","headRefName":"PROJ-1/feat/widget","baseRefName":"main","reviewDecision":null,"author":{"login":"alice"},"repository":{"nameWithOwner":"acme/app"},"labels":{"nodes":[]},"latestReviews":{"nodes":[]}}]}}}
+J
+  ;;
+  "api --paginate user/teams") echo '[]' ;;
+  pr\ view*) echo '{"number":7,"title":"Add widget","body":"desc","author":{"login":"alice"},"headRefOid":"abcdef1234567890","headRefName":"PROJ-1/feat/widget","baseRefName":"main","comments":[{"author":{"login":"bob"},"body":"nice","createdAt":"2026-09-21T00:00:00Z","url":"https://example.invalid/c1"}],"reviews":[],"url":"https://example.invalid/pr/7"}' ;;
+  pr\ diff*) printf 'diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,2 +1,4 @@\n x = 1\n-y = 2\n+y = 3\n+z = 4\n+w = 5\n' ;;
+  api\ --paginate\ repos/*/comments) echo '[{"user":{"login":"bob"},"body":"why 3?","path":"a.py","line":2,"side":"RIGHT","html_url":"https://example.invalid/rc1","created_at":"2026-09-21T00:00:00Z"}]' ;;
+  api\ --paginate\ repos/*/commits) echo '[{"sha":"abcdef1234567890","commit":{"message":"init","author":{"name":"alice","date":"2026-09-20T00:00:00Z"}},"author":{"login":"alice"}}]' ;;
+  *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
+esac

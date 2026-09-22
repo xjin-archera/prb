@@ -36,6 +36,12 @@ new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => {
   if (n.nodeType === 1 && n.dataset?.ttl) setTimeout(() => n.remove(), +n.dataset.ttl);
 }))).observe(document.getElementById('toast'), { childList: true });
 
+/* chat toggle: one delegated listener. The detail swap event fires more than once per load (the chat aside
+   arrives out of band with it), so a per-swap listener would toggle twice and cancel itself. */
+document.body.addEventListener('click', (e) => {
+  if (e.target.closest('#toggleChat')) prb.setChat(!document.body.classList.contains('chat-open'));
+});
+
 /* list: selection count, collapse, author menu */
 document.getElementById('list').addEventListener('change', (e) => {
   if (!e.target.classList.contains('sel')) return;
@@ -59,7 +65,6 @@ document.body.addEventListener('htmx:afterSwap', (e) => {
     document.querySelectorAll('#list .pr').forEach((el) => el.classList.toggle('active', el.dataset.key === k));
   }
   if (t.id === 'detail') {
-    document.getElementById('toggleChat')?.addEventListener('click', () => prb.setChat(!document.body.classList.contains('chat-open')));
     prb.setChat(localStorage.getItem('prb.chatOpen') === '1');
     if (!prb.key()) { const a = document.getElementById('chat'); if (a) a.hidden = true; }
   }

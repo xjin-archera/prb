@@ -149,7 +149,8 @@ internal/web        handlers, htmx templates, static files (embedded)
 ## Development
 
 ```bash
-make test    # go test ./...
-make lint    # gofmt + go vet
+make test          # go test ./...
+make lint          # gofmt + go vet
 make run
+tools/e2e/run.sh   # offline browser test: fake gh, isolated state, headless Chrome (needs Chrome, uv, sqlite3)
 ```
