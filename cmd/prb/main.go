@@ -177,8 +177,31 @@ func buildImage() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("docker", "build", "-t", cfg.DockerImage, "-f", "-", ".")
+	ccVersion := hostClaudeVersion()
+	if ccVersion == "" {
+		// "latest" never changes the build arg, so Docker keeps the cached layer.
+		fmt.Println("warning: no host `claude` found; installing claude-code@latest (use docker build --no-cache to refresh it)")
+		ccVersion = "latest"
+	} else {
+		fmt.Println("claude-code version for the image:", ccVersion)
+	}
+	cmd := exec.Command("docker", "build", "-t", cfg.DockerImage,
+		"--build-arg", "CLAUDE_CODE_VERSION="+ccVersion, "-f", "-", ".")
 	cmd.Stdin = strings.NewReader(dockerfile)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
+}
+
+// hostClaudeVersion returns the version of the host's `claude` CLI ("2.1.281" from
+// "2.1.281 (Claude Code)"), or "" when it cannot be read.
+func hostClaudeVersion() string {
+	out, err := exec.Command("claude", "--version").Output()
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }

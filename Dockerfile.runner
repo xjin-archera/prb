@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
-RUN npm install -g @anthropic-ai/claude-code pnpm && npm cache clean --force
+RUN npm install -g pnpm && npm cache clean --force
+# prb build-image passes the host's Claude Code version, so a host update invalidates this layer.
+ARG CLAUDE_CODE_VERSION=latest
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && npm cache clean --force
 # git refuses to touch repos owned by another uid on bind mounts; the worktree is ours by intent.
 RUN git config --system safe.directory '*'
 ENTRYPOINT []
